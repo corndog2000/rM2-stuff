@@ -393,7 +393,8 @@ Launcher::run() {
     }
 
     if (eventsAndFd.has_value()) {
-      auto gestures = gestureController.handleEvents(eventsAndFd->first);
+      auto [gestures, unhandledEvs] =
+        gestureController.handleEvents(eventsAndFd->first);
 
       for (const auto& gesture : gestures) {
         std::visit([this](const auto& g) { handleGesture(g); }, gesture);

@@ -85,8 +85,9 @@ main() {
 
   while (true) {
     auto events = input.waitForInput(std::nullopt);
-    if (!events.has_value()) {
-      std::cerr << "timout or error\n";
+    if (events.isError()) {
+      std::cerr << "Reading input error: " << events.getError().msg << "\n";
+      continue;
     }
 
     for (auto& event : *events) {

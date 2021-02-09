@@ -493,7 +493,7 @@ handleScreenEvent(Keyboard& kb, const Event& ev) {
   const auto lastFingers = kb.gestureCtrlr.getCurrentFingers();
 
   if constexpr (std::is_same_v<Event, TouchEvent>) {
-    const auto gestures = kb.gestureCtrlr.handleEvents({ ev });
+    const auto [gestures, _] = kb.gestureCtrlr.handleEvents({ ev });
     for (const auto& gesture : gestures) {
       if (std::holds_alternative<SwipeGesture>(gesture)) {
         handleGesture(kb, std::get<SwipeGesture>(gesture));
