@@ -413,7 +413,7 @@ Launcher::run() {
     auto now = std::chrono::steady_clock::now();
     if (now - lastSync > std::chrono::seconds(10)) {
       std::cerr << "Syncing" << std::endl;
-      gestureController.sync(*inputMgr.devices.front());
+      gestureController.sync(inputFds->touch);
       lastSync = now;
     }
   }

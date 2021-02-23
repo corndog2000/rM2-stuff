@@ -13,6 +13,8 @@
 #include <vector>
 
 struct libevdev;
+struct udev;
+struct udev_monitor;
 
 namespace rmlib::input {
 constexpr static auto max_num_slots = 32;
@@ -66,6 +68,7 @@ using Event = std::variant<TouchEvent, PenEvent, KeyEvent>;
 struct InputDeviceBase {
   int fd;
   libevdev* evdev;
+  std::string path;
 
   void grab();
   void ungrab();
@@ -76,7 +79,8 @@ struct InputDeviceBase {
   virtual OptError<> readEvents(std::vector<Event>& out) = 0;
 
 protected:
-  InputDeviceBase(int fd, libevdev* evdev) : fd(fd), evdev(evdev) {}
+  InputDeviceBase(int fd, libevdev* evdev, std::string path)
+    : fd(fd), evdev(evdev), path(std::move(path)) {}
 };
 
 struct FileDescriptors {
@@ -86,15 +90,18 @@ struct FileDescriptors {
 };
 
 struct InputManager {
-  ErrorOr<InputDeviceBase*> open(
-    std::string_view input,
-    Transform inputTransform = Transform::identity());
+  ErrorOr<InputDeviceBase*> open(std::string_view input,
+                                 Transform inputTransform);
+
+  ErrorOr<InputDeviceBase*> open(std::string_view input);
 
   /// Opens all devices for the current device type.
-  ErrorOr<FileDescriptors> openAll();
+  /// \param monitor If true monitor for new devices and automatically add them.
+  ///                Will also remove devices when unplugged.
+  ErrorOr<FileDescriptors> openAll(bool monitor = true);
 
   InputManager() = default;
-  ~InputManager() = default;
+  ~InputManager();
 
   InputManager(InputManager&& other) : devices(std::move(other.devices)) {
     other.devices.clear();
@@ -149,7 +156,11 @@ struct InputManager {
   }
 
   /// members
-  std::vector<std::unique_ptr<InputDeviceBase>> devices;
+  std::unordered_map<std::string_view, std::unique_ptr<InputDeviceBase>>
+    devices;
+  udev* udevHandle = nullptr;
+  udev_monitor* udevMonitor = nullptr;
+  int udevMonitorFd = -1;
 };
 
 struct GestureController {
