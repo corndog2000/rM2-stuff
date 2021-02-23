@@ -89,7 +89,7 @@ struct TouchDevice : public InputDevice<TouchDevice> {
 
   void flood() final {
     auto* buf = getTouchFlood();
-    write(fd, buf, touch_flood_size);
+    write(fd, buf, touch_flood_size * sizeof(input_event));
   }
 
   Transform transform;
@@ -105,7 +105,7 @@ struct PenDevice : public InputDevice<PenDevice> {
 
   void flood() final {
     auto* buf = getTouchFlood();
-    write(fd, buf, touch_flood_size);
+    write(fd, buf, touch_flood_size * sizeof(input_event));
   }
 
   Transform transform;
@@ -119,7 +119,7 @@ struct KeyDevice : public InputDevice<KeyDevice> {
   void flood() final {
     // TODO: this probably doesn't work
     auto* buf = getTouchFlood();
-    write(fd, buf, touch_flood_size);
+    write(fd, buf, touch_flood_size * sizeof(input_event));
   }
 
   KeyEvent keyEvent;
