@@ -26,7 +26,6 @@ struct TouchEvent {
   int pressure;
 };
 
-// TODO
 struct PenEvent {
   enum { TouchDown, TouchUp, ToolClose, ToolLeave, Move } type;
   Point location;
@@ -38,6 +37,29 @@ struct KeyEvent {
   enum { Release = 0, Press = 1, Repeat = 2 } type;
   int keyCode;
 };
+
+struct SwipeGesture {
+  enum Direction { Up, Down, Left, Right };
+
+  Direction direction;
+  Point startPosition;
+  Point endPosition;
+  int fingers;
+};
+
+struct PinchGesture {
+  enum Direction { In, Out };
+  Direction direction;
+  Point position;
+  int fingers;
+};
+
+struct TapGesture {
+  int fingers;
+  Point position;
+};
+
+using Gesture = std::variant<SwipeGesture, PinchGesture, TapGesture>;
 
 using Event = std::variant<TouchEvent, PenEvent, KeyEvent>;
 
@@ -103,7 +125,10 @@ struct InputManager {
 
     fd_set fds;
     FD_ZERO(&fds);
-    (FD_SET(extraFds, &fds), ...);
+    if constexpr (sizeof...(ExtraFds) > 0) {
+      constexpr auto fd_set = [](auto fd, auto& fds) { FD_SET(fd, &fds); };
+      (fd_set(extraFds, fds), ...);
+    }
 
     auto maxFd = std::max({ 0, extraFds... });
 
@@ -113,7 +138,11 @@ struct InputManager {
     } else {
       std::array<bool, sizeof...(extraFds)> extraResult;
       int i = 0;
-      ((extraResult[i++] = FD_ISSET(extraFds, &fds)), ...);
+
+      constexpr auto fd_isset = [](auto fd, auto& fds) {
+        return FD_ISSET(fd, &fds);
+      };
+      ((extraResult[i++] = fd_isset(extraFds, fds)), ...);
 
       return std::pair{ res, extraResult };
     }
@@ -122,29 +151,6 @@ struct InputManager {
   /// members
   std::vector<std::unique_ptr<InputDeviceBase>> devices;
 };
-
-struct SwipeGesture {
-  enum Direction { Up, Down, Left, Right };
-
-  Direction direction;
-  Point startPosition;
-  Point endPosition;
-  int fingers;
-};
-
-struct PinchGesture {
-  enum Direction { In, Out };
-  Direction direction;
-  Point position;
-  int fingers;
-};
-
-struct TapGesture {
-  int fingers;
-  Point position;
-};
-
-using Gesture = std::variant<SwipeGesture, PinchGesture, TapGesture>;
 
 struct GestureController {
   // pixels to move before detecting swipe or pinch

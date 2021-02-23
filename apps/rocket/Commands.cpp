@@ -430,13 +430,13 @@ CommandResult
 grab(Launcher& launcher, InputType input) {
   switch (input) {
     case InputType::Touch:
-      launcher.inputMgr.grab(launcher.inputFds.touch);
+      launcher.inputFds->touch.grab();
       break;
     case InputType::Pen:
-      launcher.inputMgr.grab(launcher.inputFds.pen);
+      launcher.inputFds->pen.grab();
       break;
     case InputType::Keys:
-      launcher.inputMgr.grab(launcher.inputFds.key);
+      launcher.inputFds->key.grab();
       break;
   }
   return "OK";
@@ -446,13 +446,13 @@ CommandResult
 ungrab(Launcher& launcher, InputType input) {
   switch (input) {
     case InputType::Touch:
-      launcher.inputMgr.ungrab(launcher.inputFds.touch);
+      launcher.inputFds->touch.ungrab();
       break;
     case InputType::Pen:
-      launcher.inputMgr.ungrab(launcher.inputFds.pen);
+      launcher.inputFds->pen.ungrab();
       break;
     case InputType::Keys:
-      launcher.inputMgr.ungrab(launcher.inputFds.key);
+      launcher.inputFds->key.ungrab();
       break;
   }
   return "OK";

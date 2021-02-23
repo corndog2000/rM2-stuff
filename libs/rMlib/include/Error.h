@@ -84,5 +84,5 @@ private:
     if (xOrErr.isError()) {                                                    \
       return xOrErr.getError();                                                \
     };                                                                         \
-    *xOrErr;                                                                   \
+    std::move(*xOrErr);                                                        \
   })

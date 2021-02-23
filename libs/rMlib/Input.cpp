@@ -20,6 +20,35 @@ namespace rmlib::input {
 
 namespace {
 
+constexpr auto touch_flood_size = 8 * 512 * 4;
+
+auto*
+getTouchFlood() {
+  static const auto* floodBuffer = [] {
+    // NOLINTNEXTLINE
+    static const auto ret = std::make_unique<input_event[]>(touch_flood_size);
+
+    constexpr auto mk_input_ev = [](int a, int b, int v) {
+      input_event r{};
+      r.type = a;
+      r.code = b;
+      r.value = v;
+      r.time = { 0, 0 };
+      return r;
+    };
+
+    for (int i = 0; i < touch_flood_size;) {
+      ret[i++] = mk_input_ev(EV_ABS, ABS_DISTANCE, 1);
+      ret[i++] = mk_input_ev(EV_SYN, 0, 0);
+      ret[i++] = mk_input_ev(EV_ABS, ABS_DISTANCE, 2);
+      ret[i++] = mk_input_ev(EV_SYN, 0, 0);
+    }
+
+    return ret.get();
+  }();
+  return floodBuffer;
+}
+
 template<typename Device>
 struct InputDevice : public InputDeviceBase {
   using InputDeviceBase::InputDeviceBase;
@@ -58,7 +87,10 @@ struct TouchDevice : public InputDevice<TouchDevice> {
   ErrorOr<std::vector<TouchEvent>> handleEvent(input_event);
   TouchEvent& getSlot() { return slots.at(slot); }
 
-  void flood() final {}
+  void flood() final {
+    auto* buf = getTouchFlood();
+    write(fd, buf, touch_flood_size);
+  }
 
   Transform transform;
   int slot = 0;
@@ -71,7 +103,10 @@ struct PenDevice : public InputDevice<PenDevice> {
     : InputDevice(fd, evdev), transform(transform) {}
   ErrorOr<std::vector<PenEvent>> handleEvent(input_event);
 
-  void flood() final {}
+  void flood() final {
+    auto* buf = getTouchFlood();
+    write(fd, buf, touch_flood_size);
+  }
 
   Transform transform;
   PenEvent penEvent;
@@ -81,7 +116,11 @@ struct KeyDevice : public InputDevice<KeyDevice> {
   KeyDevice(int fd, libevdev* evdev) : InputDevice(fd, evdev) {}
   ErrorOr<std::vector<KeyEvent>> handleEvent(input_event);
 
-  void flood() final {}
+  void flood() final {
+    // TODO: this probably doesn't work
+    auto* buf = getTouchFlood();
+    write(fd, buf, touch_flood_size);
+  }
 
   KeyEvent keyEvent;
 };
@@ -303,174 +342,6 @@ InputManager::waitForInput(fd_set& fdSet,
 
   return result;
 }
-//
-// std::vector<Event>
-// InputManager::readEvents(int fd) {
-//   auto it = devices.find(fd);
-//   assert(it != devices.end());
-//   return readEvents(it->second);
-// }
-//
-// namespace {
-// void
-// handleEvent(InputManager::InputDevice& device, const input_event& event) {
-//   if (event.type == EV_SYN && event.code == SYN_REPORT) {
-//     for (auto slotIdx : device.changedSlots) {
-//       auto& slot = device.slots.at(slotIdx);
-//       device.events.push_back(slot);
-//       std::visit(
-//         [](auto& r) {
-//           using Type = std::decay_t<decltype(r)>;
-//           if constexpr (!std::is_same_v<Type, KeyEvent>) {
-//             r.type = Type::Move;
-//           }
-//         },
-//         slot);
-//     }
-//     device.changedSlots.clear();
-//     return;
-//   }
-//
-//   if (event.type == EV_ABS && event.code == ABS_MT_SLOT) {
-//     device.slot = event.value;
-//     device.getSlot<TouchEvent>().slot = event.value;
-//   }
-//   device.changedSlots.insert(device.slot);
-//
-//   if (event.type == EV_ABS) {
-//     if (event.code == ABS_MT_TRACKING_ID) {
-//       auto& slot = device.getSlot<TouchEvent>();
-//       if (event.value == -1) {
-//         slot.type = TouchEvent::Up;
-//         // setType = true;
-//       } else {
-//         slot.type = TouchEvent::Down;
-//         slot.id = event.value;
-//         // setType = true;
-//       }
-//     } else if (event.code == ABS_MT_POSITION_X) {
-//       auto& slot = device.getSlot<TouchEvent>();
-//       slot.location.x = event.value;
-//     } else if (event.code == ABS_MT_POSITION_Y) {
-//       auto& slot = device.getSlot<TouchEvent>();
-//       slot.location.y = event.value;
-//     } else if (event.code == ABS_X) {
-//       device.getSlot<PenEvent>().location.x = event.value;
-//     } else if (event.code == ABS_Y) {
-//       device.getSlot<PenEvent>().location.y = event.value;
-//     } else if (event.code == ABS_DISTANCE) {
-//       device.getSlot<PenEvent>().distance = event.value;
-//     } else if (event.code == ABS_PRESSURE) {
-//       device.getSlot<PenEvent>().pressure = event.value;
-//     }
-//   }
-//
-//   if (event.type == EV_KEY) {
-//     if (event.code == BTN_TOOL_PEN) {
-//       if (event.value == KeyEvent::Press) {
-//         device.getSlot<PenEvent>().type = PenEvent::ToolClose;
-//         // setType = true;
-//       } else {
-//         device.getSlot<PenEvent>().type = PenEvent::ToolLeave;
-//         // setType = true;
-//       }
-//     } else if (event.code == BTN_TOUCH) {
-//       if (event.value == KeyEvent::Press) {
-//         device.getSlot<PenEvent>().type = PenEvent::TouchDown;
-//         // setType = true;
-//       } else {
-//         device.getSlot<PenEvent>().type = PenEvent::TouchUp;
-//         // setType = true;
-//       }
-//     } else {
-//       auto& slot = device.getSlot<KeyEvent>();
-//       slot.type = static_cast<decltype(slot.type)>(event.value);
-//       slot.keyCode = event.code;
-//     }
-//   }
-// }
-// } // namespace
-//
-// std::vector<Event>
-// InputManager::readEvents(InputDevice& device) {
-//   int rc = 0;
-//   do {
-//     auto event = input_event{};
-//     rc = libevdev_next_event(device.dev, LIBEVDEV_READ_FLAG_NORMAL, &event);
-//     if (rc == LIBEVDEV_READ_STATUS_SUCCESS) {
-//       handleEvent(device, event);
-//     } else if (rc == LIBEVDEV_READ_STATUS_SYNC) {
-//       while (rc == LIBEVDEV_READ_STATUS_SYNC) {
-//         handleEvent(device, event);
-//         rc = libevdev_next_event(device.dev, LIBEVDEV_READ_FLAG_SYNC,
-//         &event);
-//       }
-//     }
-//   } while (rc == LIBEVDEV_READ_STATUS_SYNC ||
-//            rc == LIBEVDEV_READ_STATUS_SUCCESS);
-//
-//   auto results = std::move(device.events);
-//   device.events.clear();
-//
-//   for (auto& result : results) {
-//     // Transform result if needed
-//     std::visit(
-//       [&device](auto& r) {
-//         using Type = std::decay_t<decltype(r)>;
-//         if constexpr (!std::is_same_v<Type, KeyEvent>) {
-//           r.location = device.transform * r.location;
-//         }
-//       },
-//       result);
-//   }
-//
-//   return results;
-// }
-//
-// void
-// InputManager::grab(int fd) {
-//   auto device = devices.at(fd);
-//   libevdev_grab(device.dev, libevdev_grab_mode::LIBEVDEV_GRAB);
-// }
-//
-// void
-// InputManager::ungrab(int fd) {
-//   auto device = devices.at(fd);
-//   libevdev_grab(device.dev, libevdev_grab_mode::LIBEVDEV_UNGRAB);
-// }
-//
-// void
-// InputManager::flood(int fd) {
-//   constexpr auto size = 8 * 512 * 4;
-//   static const auto* floodBuffer = [] {
-//     // NOLINTNEXTLINE
-//     static const auto ret = std::make_unique<input_event[]>(size);
-//
-//     constexpr auto mk_input_ev = [](int a, int b, int v) {
-//       input_event r{};
-//       r.type = a;
-//       r.code = b;
-//       r.value = v;
-//       r.time = { 0, 0 };
-//       return r;
-//     };
-//
-//     for (int i = 0; i < size;) {
-//       ret[i++] = mk_input_ev(EV_ABS, ABS_DISTANCE, 1);
-//       ret[i++] = mk_input_ev(EV_SYN, 0, 0);
-//       ret[i++] = mk_input_ev(EV_ABS, ABS_DISTANCE, 2);
-//       ret[i++] = mk_input_ev(EV_SYN, 0, 0);
-//     }
-//
-//     return ret.get();
-//   }();
-//
-//   std::cout << "FLOODING" << std::endl;
-//   auto device = devices.at(fd);
-//   if (write(device.fd, floodBuffer, size * sizeof(input_event)) == -1) {
-//     perror("Error writing");
-//   }
-// }
 
 namespace {
 
