@@ -123,7 +123,7 @@ struct KeyDevice : public InputDevice<KeyDevice> {
     write(fd, buf, touch_flood_size * sizeof(input_event));
   }
 
-  KeyEvent keyEvent;
+  std::vector<KeyEvent> keyEvents;
 };
 
 ErrorOr<std::vector<PenEvent>>
@@ -220,11 +220,19 @@ TouchDevice::handleEvent(input_event event) {
 ErrorOr<std::vector<KeyEvent>>
 KeyDevice::handleEvent(input_event event) {
   if (event.type == EV_KEY) {
+
+    KeyEvent keyEvent;
     keyEvent.type = static_cast<decltype(keyEvent.type)>(event.value);
     keyEvent.keyCode = event.code;
+    keyEvents.push_back(keyEvent);
+
   } else if (event.type == EV_SYN && event.code == SYN_REPORT) {
-    return std::vector{ keyEvent };
+
+    auto ret = keyEvents;
+    keyEvents.clear();
+    return ret;
   }
+
   return std::vector<KeyEvent>{};
 }
 
