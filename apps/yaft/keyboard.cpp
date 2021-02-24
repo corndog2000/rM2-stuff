@@ -846,6 +846,22 @@ Keyboard::updateRepeat() {
       key.nextRepeat += repeat_time;
     }
   }
+
+  for (auto& [_, key] : physicalKeys) {
+    (void)_;
+
+    if (!key.down) {
+      continue;
+    }
+
+    if (time > key.nextRepeat) {
+      if (!isModifier(key.info.scancode)) {
+        sendKeyDown(key);
+      }
+
+      key.nextRepeat += repeat_time;
+    }
+  }
 }
 
 void
