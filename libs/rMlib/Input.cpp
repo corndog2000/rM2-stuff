@@ -412,7 +412,7 @@ InputManager::waitForInput(fd_set& fdSet,
     return std::vector<Event>{};
   }
 
-  if (udevMonitorFd >= 1 && FD_ISSET(udevMonitorFd, &fdSet)) {
+  if (udevMonitorFd >= 0 && FD_ISSET(udevMonitorFd, &fdSet)) {
     udev_device* dev = udev_monitor_receive_device(udevMonitor);
     if (dev) {
       handeDevice(*this, *dev);
