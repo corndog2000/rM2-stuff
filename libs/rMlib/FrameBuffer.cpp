@@ -278,12 +278,12 @@ FrameBuffer::doUpdate(Rect region, Waveform waveform, UpdateFlags flags) const {
     update.temp = TEMP_USE_REMARKABLE_DRAW;
     update.flags = 0;
 
-    update.update_region.top = region.topLeft.y;
     update.update_region.left = region.topLeft.x;
+    update.update_region.top = region.topLeft.y;
     update.update_region.width = region.width();
     update.update_region.height = region.height();
-    std::cerr << "UPDATE region: {" << update.update_region.top << " "
-              << " " << update.update_region.left << " "
+    std::cerr << "UPDATE region: {" << update.update_region.left << " "
+              << " " << update.update_region.top << " "
               << update.update_region.width << " "
               << update.update_region.height << "}\n";
 
