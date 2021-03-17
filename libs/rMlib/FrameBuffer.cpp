@@ -268,7 +268,7 @@ FrameBuffer::doUpdate(Rect region, Waveform waveform, UpdateFlags flags) const {
   if (type != Swtcon) {
     auto update = mxcfb_update_data{};
 
-    update.waveform_mode = 2; // static_cast<int>(waveform);
+    update.waveform_mode = 3; // static_cast<int>(waveform);
     update.update_mode = (flags & UpdateFlags::FullRefresh) != 0 ? 1 : 0;
 
 #define TEMP_USE_REMARKABLE_DRAW 0x0018
