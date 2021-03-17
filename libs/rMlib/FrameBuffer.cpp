@@ -270,6 +270,14 @@ FrameBuffer::doUpdate(Rect region, Waveform waveform, UpdateFlags flags) const {
 
     update.waveform_mode = static_cast<int>(waveform);
     update.update_mode = (flags & UpdateFlags::FullRefresh) != 0 ? 1 : 0;
+
+#define TEMP_USE_REMARKABLE_DRAW 0x0018
+#define EPDC_FLAG_EXP1 0x270ce20
+    update.update_marker = 0;
+    update.dither_mode = EPDC_FLAG_EXP1;
+    update.temp = TEMP_USE_REMARKABLE_DRAW;
+    update.flags = 0;
+
     update.update_region.top = region.topLeft.y;
     update.update_region.left = region.topLeft.x;
     update.update_region.width = region.width();
