@@ -268,7 +268,7 @@ FrameBuffer::doUpdate(Rect region, Waveform waveform, UpdateFlags flags) const {
   if (type != Swtcon) {
     auto update = mxcfb_update_data{};
 
-    update.waveform_mode = 3; // static_cast<int>(waveform);
+    update.waveform_mode = static_cast<int>(waveform);
     update.update_mode = (flags & UpdateFlags::FullRefresh) != 0 ? 1 : 0;
 
 #define TEMP_USE_REMARKABLE_DRAW 0x0018
@@ -282,6 +282,10 @@ FrameBuffer::doUpdate(Rect region, Waveform waveform, UpdateFlags flags) const {
     update.update_region.left = region.topLeft.x;
     update.update_region.width = region.width();
     update.update_region.height = region.height();
+    std::cerr << "UPDATE region: {" << update.update_region.top << " "
+              << " " << update.update_region.left << " "
+              << update.update_region.width << " "
+              << update.update_region.height << "}\n";
 
     if (type == rM2fb) {
       auto msg = msgq_msg{};
