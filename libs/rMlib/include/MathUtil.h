@@ -118,6 +118,8 @@ struct Rect {
   constexpr int width() const { return bottomRight.x - topLeft.x + 1; }
   constexpr int height() const { return bottomRight.y - topLeft.y + 1; }
 
+  constexpr bool empty() const { return topLeft == bottomRight; }
+
   /// Scale the rect by an integer.
   constexpr Rect& operator*=(int val) {
     topLeft *= val;
@@ -131,11 +133,33 @@ struct Rect {
     return *this;
   }
 
+  constexpr Rect& operator|=(const Rect& other) {
+    topLeft = { std::min(topLeft.x, other.topLeft.x),
+                std::min(topLeft.y, other.topLeft.y) };
+    bottomRight = { std::max(bottomRight.x, other.bottomRight.x),
+                    std::max(bottomRight.y, other.bottomRight.y) };
+    return *this;
+  }
+
   constexpr bool contains(Point p) const {
     return topLeft.x <= p.x && p.x <= bottomRight.x && topLeft.y <= p.y &&
            p.y <= bottomRight.y;
   }
 };
+
+constexpr Rect
+operator&(const Rect& a, const Rect& b) {
+  return Rect{ { std::max(a.topLeft.x, b.topLeft.x),
+                 std::max(a.topLeft.y, b.topLeft.y) },
+               { std::min(a.bottomRight.x, b.bottomRight.x),
+                 std::min(a.bottomRight.y, b.bottomRight.y) } };
+}
+
+constexpr Rect
+operator|(Rect a, const Rect& b) {
+  a |= b;
+  return a;
+}
 
 constexpr Rect
 operator+(Rect r, const Point& p) {

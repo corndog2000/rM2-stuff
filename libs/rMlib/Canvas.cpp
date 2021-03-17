@@ -114,29 +114,26 @@ Canvas::getTextSize(std::string_view text, int size) {
   auto scale = stbtt_ScaleForPixelHeight(font, float(size));
 
   int ascent = 0;
-  stbtt_GetFontVMetrics(font, &ascent, nullptr, nullptr);
-  auto baseline = static_cast<int>(float(ascent) * scale);
+  int descent = 0;
+  int lineGap = 0;
+  stbtt_GetFontVMetrics(font, &ascent, &descent, &lineGap);
+
+  // Divide the line gap to above and below.
+  float charStart = float(lineGap) * scale / 2;
+
+  float baseLine = charStart + float(ascent) * scale;
+  float charEnd = baseLine - float(descent) * scale; // descent is negative.
+  float height = charEnd + charStart;
 
   auto utf32 =
     std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t>{}.from_bytes(
       text.data());
 
-  int maxY = 0;
   float xpos = 0;
   for (int ch = 0; utf32[ch] != 0; ch++) {
     int advance = 0;
     int lsb = 0;
     stbtt_GetCodepointHMetrics(font, utf32[ch], &advance, &lsb);
-
-    int x0 = 0;
-    int x1 = 0;
-    int y0 = 0;
-    int y1 = 0;
-    stbtt_GetCodepointBitmapBox(
-      font, utf32[ch], scale, scale, &x0, &y0, &x1, &y1);
-
-    auto y = baseline + y1;
-    maxY = std::max(maxY, y);
 
     xpos += float(advance) * scale;
     if (utf32[ch + 1] != 0) {
@@ -146,17 +143,28 @@ Canvas::getTextSize(std::string_view text, int size) {
     }
   }
 
-  return { static_cast<int>(xpos), maxY };
+  return { static_cast<int>(ceilf(xpos)), static_cast<int>(ceilf(height)) };
 }
 
 void
-Canvas::drawText(std::string_view text, Point location, int size) { // NOLINT
+Canvas::drawText(std::string_view text,
+                 Point location,
+                 int size,
+                 std::optional<Rect> optClipRect) { // NOLINT
+  const auto clipRect = optClipRect.has_value() ? *optClipRect : rect();
+
   const auto* font = getFont();
   auto scale = stbtt_ScaleForPixelHeight(font, float(size));
 
   int ascent = 0;
-  stbtt_GetFontVMetrics(font, &ascent, nullptr, nullptr);
-  auto baseline = static_cast<int>(float(ascent) * scale);
+  int descent = 0;
+  int lineGap = 0;
+  stbtt_GetFontVMetrics(font, &ascent, &descent, &lineGap);
+
+  // Divide the line gap to above and below.
+  float charStart = float(lineGap) * scale / 2;
+  float baseLine = charStart + float(ascent) * scale;
+  float yShfit = 0; // baseLine - floorf(baseLine);
 
   auto utf32 =
     std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t>{}.from_bytes(
@@ -179,15 +187,23 @@ Canvas::drawText(std::string_view text, Point location, int size) { // NOLINT
     stbtt_GetCodepointBitmapBox(
       font, utf32[ch], scale, scale, &x0, &y0, &x1, &y1);
 
-    int w = x1 - x0;
-    int h = y1 - y0;
+    int w = x1 - x0 + 1;
+    int h = y1 - y0 + 1;
     int size = w * h;
     if (static_cast<unsigned>(size) > textBuffer.size()) {
       textBuffer.resize(size);
     }
 
-    stbtt_MakeCodepointBitmapSubpixel(
-      font, textBuffer.data(), w, h, w, scale, scale, xShift, 0, utf32[ch]);
+    stbtt_MakeCodepointBitmapSubpixel(font,
+                                      textBuffer.data(),
+                                      /*  width */ w,
+                                      /* height */ h,
+                                      /* stride */ w,
+                                      /* xscale */ scale,
+                                      /* yscale */ scale,
+                                      xShift,
+                                      yShfit,
+                                      utf32[ch]);
 
     // Draw the bitmap to canvas.
     for (int y = 0; y < h; y++) {
@@ -196,8 +212,12 @@ Canvas::drawText(std::string_view text, Point location, int size) { // NOLINT
         uint16_t pixel565 =
           (pixel >> 3) | ((pixel >> 2) << 5) | ((pixel >> 3) << 11);
 
-        auto memY = location.y + baseline + y0 + y;
+        auto memY = location.y + static_cast<int>(baseLine) + y0 + y /*- 1*/;
         auto memX = location.x + static_cast<int>(xpos) + x0 + x;
+        if (memX < clipRect.topLeft.x || clipRect.bottomRight.x < memX ||
+            memY < clipRect.topLeft.y || clipRect.bottomRight.y < memY) {
+          continue;
+        }
 
         auto* targetPtr = getPtr<uint16_t>(memX, memY);
         *targetPtr = pixel565;

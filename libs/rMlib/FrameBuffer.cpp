@@ -15,6 +15,7 @@
 
 #ifdef EMULATE
 #include <SDL.h>
+#include <chrono>
 // #include <SDL2/SDL.h>
 #else
 #include "mxcfb.h"
@@ -106,25 +107,37 @@ makeEmulatedCanvas() {
     screenSurface, NULL, SDL_MapRGB(screenSurface->format, 0xFF, 0xFF, 0xFF));
   SDL_UpdateWindowSurface(window);
 
-  emuMem = std::make_unique<uint8_t[]>(canvas_width * canvas_height *
-                                       canvas_components);
+  const auto memSize = canvas_width * canvas_height * canvas_components;
+  emuMem = std::make_unique<uint8_t[]>(memSize);
+  memset(emuMem.get(), 0xFF, memSize);
   return Canvas(emuMem.get(), canvas_width, canvas_height, canvas_components);
 }
 
 void
 updateEmulatedCanvas(const Canvas& canvas, Rect region) {
+  std::cout << "Update: " << region << "\n";
   auto* surface = SDL_GetWindowSurface(window);
 
-  for (int y = region.topLeft.y; y < region.bottomRight.y; y++) {
-    for (int x = region.topLeft.x; x < region.bottomRight.x; x++) {
+  static int color = 0;
+  color = (color + 1) % 3;
+  for (int y = region.topLeft.y; y <= region.bottomRight.y; y++) {
+    for (int x = region.topLeft.x; x <= region.bottomRight.x; x++) {
       auto* pixelPtr = canvas.getPtr<>(x, y);
-      int32_t pixel = 0;
-      memcpy(&pixel, pixelPtr, canvas.components());
+      uint16_t pixel = *(uint16_t*)pixelPtr;
 
       // assume rgb565
-      auto b = (pixel & 0x1f) << 3;
-      auto g = ((pixel >> 5) & 0x3f) << 2;
-      auto r = ((pixel >> 11) & 0x1f) << 3;
+      int r, g, b;
+      if (y == region.topLeft.y || y == region.bottomRight.y ||
+          x == region.topLeft.x || x == region.bottomRight.x) {
+        r = color == 2 ? 0xff : 0x00;
+        g = color == 1 ? 0xff : 0x00;
+        b = color == 0 ? 0xff : 0x00;
+
+      } else {
+        b = (pixel & 0x1f) << 3;
+        g = ((pixel >> 5) & 0x3f) << 2;
+        r = ((pixel >> 11) & 0x1f) << 3;
+      }
 
       putpixel(surface,
                x / EMULATE_SCALE,
@@ -132,7 +145,13 @@ updateEmulatedCanvas(const Canvas& canvas, Rect region) {
                SDL_MapRGB(surface->format, r, g, b));
     }
   }
-  SDL_UpdateWindowSurface(window);
+
+  SDL_Rect rect;
+  rect.x = region.topLeft.x / EMULATE_SCALE;
+  rect.y = region.topLeft.y / EMULATE_SCALE;
+  rect.w = region.width() / EMULATE_SCALE;
+  rect.h = region.height() / EMULATE_SCALE;
+  SDL_UpdateWindowSurfaceRects(window, &rect, 1);
 }
 #endif // EMULATE
 } // namespace

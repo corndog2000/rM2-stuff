@@ -65,7 +65,7 @@ if (EMULATE)
 
   target_compile_definitions(${PROJECT_NAME} PRIVATE EMULATE)
   target_compile_definitions(${PROJECT_NAME} PRIVATE
-    EMULATE_SCALE=2)
+    EMULATE_SCALE=1)
 endif()
 
 install(TARGETS ${PROJECT_NAME} DESTINATION lib)

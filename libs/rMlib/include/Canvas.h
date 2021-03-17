@@ -10,9 +10,11 @@
 #include <string_view>
 #include <type_traits>
 
+#include <iostream>
+
 namespace rmlib {
 
-constexpr auto default_text_size = 24;
+constexpr auto default_text_size = 48;
 
 constexpr auto white = 0xFFFF;
 constexpr auto black = 0x0;
@@ -106,9 +108,17 @@ public:
 
   void drawText(std::string_view text,
                 Point location,
-                int size = default_text_size);
+                int size = default_text_size,
+                std::optional<Rect> clipRect = std::nullopt);
 
   void drawLine(Point start, Point end, int val);
+
+  void drawRectangle(Point topLeft, Point bottomRight, int val) {
+    drawLine(topLeft, Point{ bottomRight.x, topLeft.y }, val);
+    drawLine(topLeft, Point{ topLeft.x, bottomRight.y }, val);
+    drawLine(bottomRight, Point{ bottomRight.x, topLeft.y }, val);
+    drawLine(bottomRight, Point{ topLeft.x, bottomRight.y }, val);
+  }
 
   template<typename T = uint8_t>
   const T* getPtr(int x, int y) const {
