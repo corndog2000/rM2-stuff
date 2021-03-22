@@ -104,7 +104,9 @@ makeEmulatedCanvas() {
   }
   auto* screenSurface = SDL_GetWindowSurface(window);
   SDL_FillRect(
-    screenSurface, NULL, SDL_MapRGB(screenSurface->format, 0xFF, 0xFF, 0xFF));
+    screenSurface,
+    NULL,
+    SDL_MapRGB(screenSurface->format, 0x1F << 3, 0x1F << 3, 0x1F << 3));
   SDL_UpdateWindowSurface(window);
 
   const auto memSize = canvas_width * canvas_height * canvas_components;
@@ -118,39 +120,49 @@ updateEmulatedCanvas(const Canvas& canvas, Rect region) {
   std::cout << "Update: " << region << "\n";
   auto* surface = SDL_GetWindowSurface(window);
 
+  const auto getGrey = [&canvas](int x, int y) {
+    const auto rgb = *canvas.getPtr<uint16_t>(x, y);
+    const auto r = rgb & 0x1f;
+    return r << 3;
+  };
+
   static int color = 0;
   color = (color + 1) % 3;
-  for (int y = region.topLeft.y; y <= region.bottomRight.y; y++) {
-    for (int x = region.topLeft.x; x <= region.bottomRight.x; x++) {
-      auto* pixelPtr = canvas.getPtr<>(x, y);
-      uint16_t pixel = *(uint16_t*)pixelPtr;
+  const auto surfStart = region.topLeft / EMULATE_SCALE;
+  const auto surfEnd = region.bottomRight / EMULATE_SCALE;
+
+  for (int y = surfStart.y; y <= surfEnd.y; y++) {
+    for (int x = surfStart.x; x <= surfEnd.x; x++) {
+
+      auto pixel = getGrey(x * EMULATE_SCALE, y * EMULATE_SCALE);
+#if EMULATE_SCALE > 1
+      pixel += getGrey(x * EMULATE_SCALE + 1, y * EMULATE_SCALE);
+      pixel += getGrey(x * EMULATE_SCALE, y * EMULATE_SCALE + 1);
+      pixel += getGrey(x * EMULATE_SCALE + 1, y * EMULATE_SCALE + 1);
+      pixel /= 4;
+#endif
 
       // assume rgb565
-      int r, g, b;
-      if (y == region.topLeft.y || y == region.bottomRight.y ||
-          x == region.topLeft.x || x == region.bottomRight.x) {
+      int r = pixel;
+      int g = pixel;
+      int b = pixel;
+
+      if (y == surfStart.y || y == surfEnd.y || x == surfStart.x ||
+          x == surfEnd.x) {
         r = color == 2 ? 0xff : 0x00;
         g = color == 1 ? 0xff : 0x00;
         b = color == 0 ? 0xff : 0x00;
-
-      } else {
-        b = (pixel & 0x1f) << 3;
-        g = ((pixel >> 5) & 0x3f) << 2;
-        r = ((pixel >> 11) & 0x1f) << 3;
       }
 
-      putpixel(surface,
-               x / EMULATE_SCALE,
-               y / EMULATE_SCALE,
-               SDL_MapRGB(surface->format, r, g, b));
+      putpixel(surface, x, y, SDL_MapRGB(surface->format, r, g, b));
     }
   }
 
   SDL_Rect rect;
   rect.x = region.topLeft.x / EMULATE_SCALE;
   rect.y = region.topLeft.y / EMULATE_SCALE;
-  rect.w = region.width() / EMULATE_SCALE;
-  rect.h = region.height() / EMULATE_SCALE;
+  rect.w = region.width() / EMULATE_SCALE + 1;
+  rect.h = region.height() / EMULATE_SCALE + 1;
   SDL_UpdateWindowSurfaceRects(window, &rect, 1);
 }
 #endif // EMULATE

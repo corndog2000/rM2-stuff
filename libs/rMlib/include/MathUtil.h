@@ -56,6 +56,18 @@ operator+(Point a, const Point& b) {
   return a;
 }
 
+constexpr Point
+operator*(Point a, int b) {
+  a *= b;
+  return a;
+}
+
+constexpr Point
+operator/(Point a, int b) {
+  a /= b;
+  return a;
+}
+
 template<typename T>
 std::basic_ostream<char, T>&
 operator<<(std::basic_ostream<char, T>& os, const Point& p) {
