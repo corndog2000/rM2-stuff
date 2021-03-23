@@ -192,6 +192,28 @@ operator<<(std::basic_ostream<char, T>& os, const Rect& r) {
   return os;
 }
 
+struct Size {
+  int width;
+  int height;
+
+  constexpr rmlib::Point toPoint() const { return { width - 1, height - 1 }; }
+
+  friend bool operator==(const Size& lhs, const Size& rhs) {
+    return lhs.width == rhs.width && lhs.height == rhs.height;
+  }
+
+  friend bool operator!=(const Size& lhs, const Size& rhs) {
+    return !(lhs == rhs);
+  }
+};
+
+template<typename T>
+std::basic_ostream<char, T>&
+operator<<(std::basic_ostream<char, T>& os, const Size& p) {
+  os << "{ " << p.width << ", " << p.height << " }";
+  return os;
+}
+
 namespace static_tests {
 static_assert(Transform::identity() * Point{ 4, 10 } == Point{ 4, 10 });
 static_assert(Transform::scale(4, 2) * Point{ 4, 10 } == Point{ 16, 20 });

@@ -150,6 +150,8 @@ void
 Canvas::drawText(std::string_view text,
                  Point location,
                  int size,
+                 int fg,
+                 int bg,
                  std::optional<Rect> optClipRect) { // NOLINT
   const auto clipRect = optClipRect.has_value() ? *optClipRect : rect();
 
@@ -205,10 +207,15 @@ Canvas::drawText(std::string_view text,
                                       yShfit,
                                       utf32[ch]);
 
+    const auto fg8 = fg & 0xff;
+    const auto bg8 = bg & 0xff;
+
     // Draw the bitmap to canvas.
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        auto pixel = 0xff - textBuffer[y * w + x];
+        int t = textBuffer[y * w + x];
+        int pixel = bg8 + (t * (fg8 - bg8)) / 0xff;
+        // auto pixel = (0xff - textBuffer[y * w + x]);
         uint16_t pixel565 =
           (pixel >> 3) | ((pixel >> 2) << 5) | ((pixel >> 3) << 11);
 

@@ -109,6 +109,8 @@ public:
   void drawText(std::string_view text,
                 Point location,
                 int size = default_text_size,
+                int fg = black,
+                int bg = white,
                 std::optional<Rect> clipRect = std::nullopt);
 
   void drawLine(Point start, Point end, int val);

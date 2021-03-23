@@ -104,6 +104,7 @@ makeEmulatedCanvas() {
   }
   auto* screenSurface = SDL_GetWindowSurface(window);
   SDL_FillRect(
+
     screenSurface,
     NULL,
     SDL_MapRGB(screenSurface->format, 0x1F << 3, 0x1F << 3, 0x1F << 3));
@@ -295,6 +296,7 @@ FrameBuffer::~FrameBuffer() {
 void
 FrameBuffer::doUpdate(Rect region, Waveform waveform, UpdateFlags flags) const {
 #ifdef EMULATE
+  std::cout << (waveform == Waveform::DU ? "DU" : "Other") << " ";
   updateEmulatedCanvas(canvas, region);
 #else
   if (type != Swtcon) {
