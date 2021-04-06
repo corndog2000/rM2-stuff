@@ -117,6 +117,8 @@ private:
   // RenderContext& context;
 };
 
+int RenderObject::roCount = 0;
+
 class SingleChildRenderObject : public RenderObject {
 public:
   SingleChildRenderObject() = default;
@@ -182,8 +184,6 @@ protected:
 
   std::unique_ptr<RenderObject> child;
 };
-
-int RenderObject::roCount = 0;
 
 class MultiChildRenderObject : public RenderObject {
 public:

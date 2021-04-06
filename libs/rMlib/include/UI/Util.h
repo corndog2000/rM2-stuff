@@ -23,6 +23,15 @@ struct Insets {
     return Rect{ { rect.topLeft.x + left, rect.topLeft.y + top },
                  { rect.bottomRight.x - right, rect.bottomRight.y - bottom } };
   }
+
+  constexpr bool operator==(const Insets& other) const {
+    return top == other.top && bottom == other.bottom && left == other.left &&
+           right == other.right;
+  }
+
+  constexpr bool operator!=(const Insets& other) const {
+    return !(*this == other);
+  }
 };
 
 struct Constraints {

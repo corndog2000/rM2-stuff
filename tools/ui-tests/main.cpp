@@ -31,7 +31,8 @@ public:
   public:
     auto build(AppContext& context) const {
       return GestureDetector(
-        Border(Padding(Text(""), Insets::all(on ? 0 : 8)), on ? 10 : 2),
+        Border(Padding(Text(""), Insets::all(on ? 0 : 8)),
+               Insets::all(on ? 10 : 2)),
         [this]() { setState([](auto& self) { self.on = !self.on; }); });
     }
 
@@ -107,10 +108,10 @@ public:
 
 int
 main() {
-  auto optErr = runApp(Center(Row(Text("Test:"), CounterTest())));
-  // auto optErr = runApp(Center(Column(Sized(Colored(0x00), std::nullopt, 50),
-  //                                    Sized(Colored(0x88), 50, 50),
-  //                                    Sized(Colored(0xee), 50, 50))));
+  // auto optErr = runApp(Center(Row(Text("Test:"), CounterTest())));
+  auto optErr = runApp(Center(Column(Sized(Colored(0x00), std::nullopt, 50),
+                                     Sized(Colored(0x88), 50, 50),
+                                     Sized(Colored(0xee), 50, 50))));
 
   if (optErr.isError()) {
     std::cerr << optErr.getError().msg << "\n";

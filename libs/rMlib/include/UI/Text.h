@@ -11,13 +11,15 @@ class TextRenderObject;
 
 class Text : public Widget<TextRenderObject> {
 public:
-  Text(std::string text) : text(std::move(text)) {}
+  Text(std::string text, int fontSize = default_text_size)
+    : text(std::move(text)), fontSize(fontSize) {}
 
   std::unique_ptr<RenderObject> createRenderObject() const;
 
 private:
   friend class TextRenderObject;
   std::string text;
+  int fontSize;
 };
 
 class TextRenderObject : public RenderObject {
@@ -25,12 +27,17 @@ public:
   TextRenderObject(const Text& widget) : widget(&widget) {}
 
   void update(const Text& newWidget) {
-    if (newWidget.text.size() != widget->text.size()) {
-      markNeedsLayout();
-    }
-
-    if (newWidget.text != widget->text) {
+    if (newWidget.fontSize != widget->fontSize) {
       markNeedsDraw();
+      markNeedsLayout();
+    } else {
+      if (newWidget.text.size() != widget->text.size()) {
+        markNeedsLayout();
+      }
+
+      if (newWidget.text != widget->text) {
+        markNeedsDraw();
+      }
     }
 
     widget = &newWidget;

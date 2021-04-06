@@ -7,6 +7,30 @@
 
 namespace rmlib {
 
+using PosCallback = std::function<void(Point)>;
+
+struct Gestures {
+  Callback onTap;
+
+  PosCallback onTouchMove;
+  PosCallback onTouchDown;
+
+  Gestures& OnTap(Callback cb) {
+    onTap = std::move(cb);
+    return *this;
+  }
+
+  Gestures& OnTouchMove(PosCallback cb) {
+    onTouchMove = std::move(cb);
+    return *this;
+  }
+
+  Gestures& OnTouchDown(PosCallback cb) {
+    onTouchDown = std::move(cb);
+    return *this;
+  }
+};
+
 template<typename Child>
 class GestureDetector;
 
@@ -18,18 +42,34 @@ public:
     , widget(&widget) {}
 
   void handleInput(const rmlib::input::Event& ev) final {
-    if (!std::holds_alternative<rmlib::input::TouchEvent>(ev)) {
-      return;
-    }
+    std::visit(
+      [this](const auto& ev) {
+        if constexpr (input::is_pointer_event<decltype(ev)>) {
+          if (ev.isDown() && getRect().contains(ev.location) &&
+              currentId == -1) {
+            currentId = ev.id;
+            if (widget->gestures.onTouchDown) {
+              widget->gestures.onTouchDown(ev.location);
+            }
+          }
 
-    const auto& touchEv = std::get<rmlib::input::TouchEvent>(ev);
-    if (touchEv.type != rmlib::input::TouchEvent::Up) {
-      return;
-    }
+          if (ev.id != currentId) {
+            return;
+          }
 
-    if (getRect().contains(touchEv.location)) {
-      widget->onTap();
-    }
+          if (ev.isUp()) {
+            currentId = -1;
+            if (widget->gestures.onTap) {
+              widget->gestures.onTap();
+            }
+          }
+
+          if (ev.isMove() && widget->gestures.onTouchMove) {
+            widget->gestures.onTouchMove(ev.location);
+          }
+        }
+      },
+      ev);
   }
 
   void update(const GestureDetector<Child>& newWidget) {
@@ -39,14 +79,15 @@ public:
 
 private:
   const GestureDetector<Child>* widget;
+  int currentId = -1;
 };
 
 template<typename Child>
 class GestureDetector : public Widget<GestureRenderObject<Child>> {
 private:
 public:
-  GestureDetector(Child child, Callback onTap)
-    : child(std::move(child)), onTap(std::move(onTap)) {}
+  GestureDetector(Child child, Gestures gestures)
+    : child(std::move(child)), gestures(std::move(gestures)) {}
 
   std::unique_ptr<RenderObject> createRenderObject() const {
     return std::make_unique<GestureRenderObject<Child>>(*this);
@@ -55,12 +96,13 @@ public:
 private:
   friend class GestureRenderObject<Child>;
   Child child;
-  Callback onTap;
+  Gestures gestures;
 };
 
 auto
 Button(std::string text, Callback onTap) {
   return GestureDetector(
-    Container(Text(text), Insets::all(2), 2, Insets::all(1)), std::move(onTap));
+    Container(Text(text), Insets::all(2), Insets::all(2), Insets::all(1)),
+    { .onTap = std::move(onTap) });
 }
 } // namespace rmlib

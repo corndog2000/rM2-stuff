@@ -112,7 +112,7 @@ makeEmulatedCanvas() {
 
   const auto memSize = canvas_width * canvas_height * canvas_components;
   emuMem = std::make_unique<uint8_t[]>(memSize);
-  memset(emuMem.get(), 0xFF, memSize);
+  memset(emuMem.get(), 0xaa, memSize);
   return Canvas(emuMem.get(), canvas_width, canvas_height, canvas_components);
 }
 

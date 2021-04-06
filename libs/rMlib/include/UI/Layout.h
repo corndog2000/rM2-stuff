@@ -17,7 +17,7 @@ public:
   Size doLayout(const Constraints& constraints) override {
     childSize = child->layout(Constraints{ { 0, 0 }, constraints.max });
 
-    Size result = constraints.max;
+    auto result = constraints.max;
     if (!constraints.hasBoundedWidth()) {
       result.width = childSize.width;
     }
@@ -140,10 +140,9 @@ public:
 
 protected:
   Size doLayout(const Constraints& constraints) override {
-    const auto insets = Insets::all(widget->size);
-    const auto childConstraints = constraints.inset(insets);
+    const auto childConstraints = constraints.inset(widget->size);
     const auto childSize = child->layout(childConstraints);
-    const auto newSize = constraints.expand(childSize, insets);
+    const auto newSize = constraints.expand(childSize, widget->size);
 
     if (newSize != getSize()) {
       markNeedsDraw();
@@ -153,15 +152,34 @@ protected:
   }
 
   UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
-    const auto insets = Insets::all(widget->size);
-    auto result = child->draw(insets.shrink(rect), canvas);
+    auto result = child->draw(widget->size.shrink(rect), canvas);
 
     if (isFullDraw()) {
-      for (int i = 0; i < widget->size; i++) {
-        canvas.drawRectangle(rect.topLeft + rmlib::Point{ i, i },
-                             rect.bottomRight - rmlib::Point{ i, i },
-                             rmlib::black);
-      }
+      const auto drawLine = [&canvas](Point a, Point b, Point dir, int size) {
+        for (int i = 0; i < size; i++) {
+          canvas.drawLine(a, b, black);
+          a += dir;
+          b += dir;
+        }
+      };
+
+      drawLine(rect.topLeft,
+               { rect.bottomRight.x, rect.topLeft.y },
+               { 0, 1 },
+               widget->size.top);
+      drawLine(rect.topLeft,
+               { rect.topLeft.x, rect.bottomRight.y },
+               { 1, 0 },
+               widget->size.left);
+      drawLine({ rect.bottomRight.x, rect.topLeft.y },
+               rect.bottomRight,
+               { -1, 0 },
+               widget->size.right);
+      drawLine({ rect.topLeft.x, rect.bottomRight.y },
+               rect.bottomRight,
+               { 0, -1 },
+               widget->size.bottom);
+
       result |= UpdateRegion{ rect, rmlib::fb::Waveform::DU };
     }
 
@@ -176,7 +194,7 @@ template<typename Child>
 class Border : public Widget<BorderRenderObject<Child>> {
 private:
 public:
-  Border(Child child, int size) : child(std::move(child)), size(size) {}
+  Border(Child child, Insets size) : child(std::move(child)), size(size) {}
 
   std::unique_ptr<RenderObject> createRenderObject() const {
     return std::make_unique<BorderRenderObject<Child>>(*this);
@@ -185,7 +203,7 @@ public:
 private:
   friend class BorderRenderObject<Child>;
   Child child;
-  int size;
+  Insets size;
 };
 
 template<class Child>
@@ -313,10 +331,134 @@ Colored::createRenderObject() const {
 }
 
 template<typename Child>
+class ClearedRenderObject;
+
+template<typename Child>
+class Cleared : public Widget<ClearedRenderObject<Child>> {
+private:
+public:
+  Cleared(Child child, int color = white)
+    : child(std::move(child)), color(color) {}
+
+  std::unique_ptr<RenderObject> createRenderObject() const {
+    return std::make_unique<ClearedRenderObject<Child>>(*this);
+  }
+
+private:
+  friend class ClearedRenderObject<Child>;
+  Child child;
+  int color;
+};
+
+template<typename Child>
+class ClearedRenderObject : public SingleChildRenderObject {
+public:
+  ClearedRenderObject(const Cleared<Child>& widget)
+    : SingleChildRenderObject(widget.child.createRenderObject())
+    , widget(&widget) {}
+
+  void update(const Cleared<Child>& newWidget) {
+    if (newWidget.color != widget->color) {
+      markNeedsDraw();
+    }
+    widget = &newWidget;
+    widget->child.update(*child);
+  }
+
+protected:
+  Size doLayout(const Constraints& constraints) override {
+    return child->layout(constraints);
+  }
+
+  UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
+    auto region = UpdateRegion{};
+
+    if (isFullDraw()) {
+      canvas.set(rect, widget->color);
+      region = UpdateRegion{ rect };
+    }
+
+    return region | child->draw(rect, canvas);
+  }
+
+private:
+  const Cleared<Child>* widget;
+};
+
+template<typename Child>
+class PositionedRenderObject;
+
+template<typename Child>
+class Positioned : public Widget<PositionedRenderObject<Child>> {
+private:
+public:
+  Positioned(Child child, Point position)
+    : child(std::move(child)), position(position) {}
+
+  std::unique_ptr<RenderObject> createRenderObject() const {
+    return std::make_unique<PositionedRenderObject<Child>>(*this);
+  }
+
+private:
+  friend class PositionedRenderObject<Child>;
+  Child child;
+  Point position;
+};
+
+template<typename Child>
+class PositionedRenderObject : public SingleChildRenderObject {
+public:
+  PositionedRenderObject(const Positioned<Child>& widget)
+    : SingleChildRenderObject(widget.child.createRenderObject())
+    , widget(&widget) {}
+
+  void update(const Positioned<Child>& newWidget) {
+    if (newWidget.position != widget->position) {
+      markNeedsLayout();
+
+      RenderObject::markNeedsDraw(/* full */ false);
+      child->markNeedsDraw(true);
+    }
+    widget = &newWidget;
+    widget->child.update(*child);
+  }
+
+protected:
+  Size doLayout(const Constraints& constraints) override {
+    const auto newConstraints =
+      Constraints{ { 0, 0 },
+                   { constraints.max.width - widget->position.x,
+                     constraints.max.height - widget->position.y } };
+
+    childSize = child->layout(newConstraints);
+
+    auto result = constraints.max;
+    if (!constraints.hasBoundedWidth()) {
+      result.width = childSize.width;
+    }
+    if (!constraints.hasBoundedHeight()) {
+      result.height = childSize.height;
+    }
+
+    return result;
+  }
+
+  UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
+    const auto topLeft = rect.topLeft + widget->position;
+    const auto bottomRight = topLeft + childSize.toPoint();
+    return child->draw({ topLeft, bottomRight }, canvas);
+  }
+
+private:
+  const Positioned<Child>* widget;
+  Size childSize;
+};
+
+template<typename Child>
 auto
 Container(Child child,
           Insets padding = {},
-          int border = 0,
+          Insets border = Insets::all(0),
           Insets margin = {}) {
   return Padding(Border(Padding(child, padding), border), margin);
 }
