@@ -318,7 +318,20 @@ FrameBuffer::doUpdate(Rect region, Waveform waveform, UpdateFlags flags) const {
     update.update_region.height = region.height();
 
 #ifndef NDEBUG
-    std::cerr << "UPDATE region: {" << update.update_region.left << " "
+    const auto waveformStr = [waveform] {
+      switch (waveform) {
+        case Waveform::DU:
+          return "DU";
+        case Waveform::GC16:
+          return "GC16";
+        case Waveform::GC16Fast:
+          return "GC16Fast";
+        default:
+          return "???";
+      }
+    }();
+    std::cerr << "UPDATE " << waveformStr << " region: {"
+              << update.update_region.left << " "
               << " " << update.update_region.top << " "
               << update.update_region.width << " "
               << update.update_region.height << "}\n";

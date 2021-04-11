@@ -455,7 +455,7 @@ InputManager::open(std::string_view input) {
   return open(input, optTransform.has_value() ? *optTransform : Transform{});
 }
 
-ErrorOr<FileDescriptors>
+ErrorOr<BaseDevices>
 InputManager::openAll(bool monitor) {
   udev* udevHandle =
     this->udevHandle == nullptr ? udev_new() : this->udevHandle;
@@ -499,7 +499,8 @@ InputManager::openAll(bool monitor) {
   auto* pen = devices.at(paths.penPath).get();
   auto* key = devices.at(paths.buttonPath).get();
 
-  return FileDescriptors{ *pen, *touch, *key };
+  baseDevices.emplace(BaseDevices{ *pen, *touch, *key });
+  return *baseDevices;
 }
 
 ErrorOr<std::vector<Event>>

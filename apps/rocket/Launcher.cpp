@@ -5,7 +5,7 @@
 
 #include <iostream>
 
-#include <linux/input.h>
+// #include <linux/input.h>
 #include <unistd.h>
 
 using namespace rmlib;
@@ -49,7 +49,7 @@ Launcher::readApps() {
     } else {
 
       // Update existing apps.
-      appIt->description = *descIt;
+      appIt->description = std::move(*descIt);
       appDescriptions.erase(descIt);
     }
 
@@ -410,11 +410,12 @@ Launcher::run() {
       for (const auto& ev : unhandledEvs) {
         if (std::holds_alternative<KeyEvent>(ev)) {
           const auto& keyEv = std::get<KeyEvent>(ev);
-          if (keyEv.keyCode == KEY_POWER && keyEv.type == KeyEvent::Release) {
-            //  system("/sbin/rmmod brcmfmac");
-            //  system("echo \"mem\" > /sys/power/state");
-            //  system("/sbin/modprobe brcmfmac");
-          }
+          // if (keyEv.keyCode == KEY_POWER && keyEv.type == KeyEvent::Release)
+          // {
+          //  system("/sbin/rmmod brcmfmac");
+          //  system("echo \"mem\" > /sys/power/state");
+          //  system("/sbin/modprobe brcmfmac");
+          //}
         }
       }
 

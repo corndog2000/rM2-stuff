@@ -19,6 +19,8 @@ struct TimerHandle {
   TimerHandle(const TimerHandle&) = delete;
   TimerHandle& operator=(const TimerHandle&) = delete;
 
+  void disable();
+
 private:
   std::shared_ptr<Timer> timer;
 };
@@ -92,10 +94,16 @@ struct TimerCmp {
   }
 };
 
-inline TimerHandle::~TimerHandle() {
+inline void
+TimerHandle::disable() {
   if (timer != nullptr) {
     timer->disable();
+    timer = nullptr;
   }
+}
+
+inline TimerHandle::~TimerHandle() {
+  disable();
 }
 
 using TimerQueue = std::priority_queue<std::shared_ptr<Timer>,

@@ -46,7 +46,7 @@ public:
 protected:
   Size doLayout(const Constraints& constraints) override {
     const auto textSize =
-      rmlib::Canvas::getTextSize(widget->text, rmlib::default_text_size);
+      rmlib::Canvas::getTextSize(widget->text, widget->fontSize);
 
     Size result;
 
@@ -71,7 +71,7 @@ protected:
 
   UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
     const auto textSize =
-      rmlib::Canvas::getTextSize(widget->text, rmlib::default_text_size);
+      rmlib::Canvas::getTextSize(widget->text, widget->fontSize);
     const auto x = std::max(0, (rect.width() - textSize.x) / 2);
     const auto y = std::max(0, (rect.height() - textSize.y) / 2);
 
@@ -83,7 +83,7 @@ protected:
     canvas.set(drawRect, rmlib::white);
     canvas.drawText(widget->text,
                     point,
-                    rmlib::default_text_size,
+                    widget->fontSize,
                     black,
                     white,
                     /* clip */ rect);

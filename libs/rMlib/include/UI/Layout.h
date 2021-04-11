@@ -276,60 +276,6 @@ private:
   std::optional<int> height;
 };
 
-class ColoredRenderObject;
-
-class Colored : public Widget<ColoredRenderObject> {
-private:
-public:
-  Colored(int color) : color(color) {}
-
-  std::unique_ptr<RenderObject> createRenderObject() const;
-
-private:
-  friend class ColoredRenderObject;
-  int color;
-};
-
-class ColoredRenderObject : public RenderObject {
-public:
-  ColoredRenderObject(const Colored& widget) : widget(&widget) {}
-
-  void update(const Colored& newWidget) {
-    if (newWidget.color != widget->color) {
-      markNeedsDraw();
-    }
-    widget = &newWidget;
-  }
-
-protected:
-  Size doLayout(const Constraints& constraints) override {
-    auto result = constraints.max;
-
-    if (result.height == Constraints::unbound) {
-      result.height = constraints.min.height;
-    }
-
-    if (result.width == Constraints::unbound) {
-      result.width = constraints.min.width;
-    }
-
-    return result;
-  }
-
-  UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
-    canvas.set(rect, widget->color);
-    return UpdateRegion{ rect };
-  }
-
-private:
-  const Colored* widget;
-};
-
-inline std::unique_ptr<RenderObject>
-Colored::createRenderObject() const {
-  return std::make_unique<ColoredRenderObject>(*this);
-}
-
 template<typename Child>
 class ClearedRenderObject;
 

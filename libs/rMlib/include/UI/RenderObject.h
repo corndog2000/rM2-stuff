@@ -12,10 +12,16 @@ class RenderObject {
   static int roCount;
 
 public:
-  RenderObject() : mID(roCount++) { std::cout << "alloc RO: " << mID << "\n"; }
+  RenderObject() : mID(roCount++) {
+#ifndef NDEBUG
+    std::cout << "alloc RO: " << mID << "\n";
+#endif
+  }
   // RenderObject(RenderContext& context) : context(context) {}
   virtual ~RenderObject() {
+#ifndef NDEBUG
     std::cout << "free RO: " << mID << "\n";
+#endif
     roCount--;
   }
 
@@ -35,7 +41,7 @@ public:
   }
 
   virtual UpdateRegion cleanup(rmlib::Canvas& canvas) {
-    if (mNeedsDraw == Full) {
+    if (isFullDraw()) {
       canvas.set(this->rect, rmlib::white);
       return UpdateRegion{ this->rect, rmlib::fb::Waveform::DU };
     }
@@ -142,17 +148,24 @@ public:
   }
 
   UpdateRegion cleanup(rmlib::Canvas& canvas) override {
-    return RenderObject::cleanup(canvas) | child->cleanup(canvas);
+    if (isFullDraw()) {
+      return RenderObject::cleanup(canvas);
+    }
+    return child->cleanup(canvas);
   }
 
   void markNeedsLayout() override {
     RenderObject::markNeedsLayout();
-    child->markNeedsLayout();
+    if (child) {
+      child->markNeedsLayout();
+    }
   }
 
   void markNeedsDraw(bool full = true) override {
     RenderObject::markNeedsDraw(full);
-    child->markNeedsDraw(full);
+    if (child) {
+      child->markNeedsDraw(full);
+    }
   }
 
   void rebuild(AppContext& context) final {
@@ -214,7 +227,11 @@ public:
   }
 
   UpdateRegion cleanup(rmlib::Canvas& canvas) override {
-    auto result = RenderObject::cleanup(canvas);
+    if (isFullDraw()) {
+      return RenderObject::cleanup(canvas);
+    }
+
+    auto result = UpdateRegion{};
     for (const auto& child : children) {
       result |= child->cleanup(canvas);
     }

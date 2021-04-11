@@ -8,6 +8,8 @@ namespace rmlib {
 
 using Callback = std::function<void()>;
 
+enum class Axis { Horizontal, Vertical };
+
 struct Insets {
   int top = 0;
   int bottom = 0;
@@ -80,7 +82,7 @@ struct UpdateRegion {
     : region({ { 0, 0 }, { 0, 0 } }), waveform(fb::Waveform::DU) {}
 
   constexpr UpdateRegion(Rect region)
-    : region(region), waveform(fb::Waveform::GC16) {}
+    : region(region), waveform(fb::Waveform::GC16Fast) {}
 
   constexpr UpdateRegion(Rect region, fb::Waveform waveform)
     : region(region), waveform(waveform) {}

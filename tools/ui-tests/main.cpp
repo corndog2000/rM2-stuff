@@ -9,6 +9,7 @@
 #include <Input.h>
 
 #include <UI.h>
+#include <UI/Wrap.h>
 
 using namespace rmlib;
 
@@ -30,10 +31,11 @@ public:
   class State : public StateBase<ToggleTest> {
   public:
     auto build(AppContext& context) const {
-      return GestureDetector(
-        Border(Padding(Text(""), Insets::all(on ? 0 : 8)),
-               Insets::all(on ? 10 : 2)),
-        [this]() { setState([](auto& self) { self.on = !self.on; }); });
+      return GestureDetector(Border(Padding(Text(""), Insets::all(on ? 0 : 8)),
+                                    Insets::all(on ? 10 : 2)),
+                             Gestures{}.OnTap([this]() {
+                               setState([](auto& self) { self.on = !self.on; });
+                             }));
     }
 
   private:
@@ -106,12 +108,62 @@ public:
   State createState() const { return State{}; }
 };
 
+class TestW : public StatelessWidget<TestW> {
+public:
+  TestW(int i) : x(i) {}
+
+  auto build(AppContext&) const {
+    return Container(Text("Test: " + std::to_string(x)),
+                     Insets::all(2),
+                     Insets::all(2),
+                     Insets::all(2));
+  }
+
+private:
+  int x;
+};
+
+class WrapTest : public StatefulWidget<WrapTest> {
+public:
+  class State : public StateBase<WrapTest> {
+  public:
+    void init(AppContext& context) {}
+
+    auto build(AppContext& context) const {
+      std::vector<TestW> widgets;
+      for (auto i = 0; i < count; i++) {
+        widgets.emplace_back(i);
+      }
+
+      return Row(Column(Button("+1", [this] { increase(); }),
+                        Button("-1", [this] { decrease(); })),
+                 Wrap(widgets, Axis::Vertical));
+    }
+
+  private:
+    void reset() const {
+      setState([](auto& self) { self.count = 0; });
+    }
+    void increase() const {
+      setState([](auto& self) { self.count++; });
+    }
+
+    void decrease() const {
+      setState([](auto& self) { self.count--; });
+    }
+
+    int count = 0;
+    TimerHandle timer;
+  };
+
+public:
+  State createState() const { return State{}; }
+};
+
 int
 main() {
   // auto optErr = runApp(Center(Row(Text("Test:"), CounterTest())));
-  auto optErr = runApp(Center(Column(Sized(Colored(0x00), std::nullopt, 50),
-                                     Sized(Colored(0x88), 50, 50),
-                                     Sized(Colored(0xee), 50, 50))));
+  auto optErr = runApp(Center(WrapTest()));
 
   if (optErr.isError()) {
     std::cerr << optErr.getError().msg << "\n";

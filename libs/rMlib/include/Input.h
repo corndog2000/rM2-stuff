@@ -97,7 +97,7 @@ protected:
     : fd(fd), evdev(evdev), path(std::move(path)) {}
 };
 
-struct FileDescriptors {
+struct BaseDevices {
   InputDeviceBase& pen;
   InputDeviceBase& touch;
   InputDeviceBase& key;
@@ -112,7 +112,7 @@ struct InputManager {
   /// Opens all devices for the current device type.
   /// \param monitor If true monitor for new devices and automatically add them.
   ///                Will also remove devices when unplugged.
-  ErrorOr<FileDescriptors> openAll(bool monitor = true);
+  ErrorOr<BaseDevices> openAll(bool monitor = true);
 
   InputManager();
   ~InputManager();
@@ -169,9 +169,14 @@ struct InputManager {
     }
   }
 
+  std::optional<BaseDevices> getBaseDevices() const { return baseDevices; }
+
   /// members
   std::unordered_map<std::string_view, std::unique_ptr<InputDeviceBase>>
     devices;
+
+private:
+  std::optional<BaseDevices> baseDevices;
   udev* udevHandle = nullptr;
   udev_monitor* udevMonitor = nullptr;
   int udevMonitorFd = -1;

@@ -122,6 +122,47 @@ operator*(const Transform& lhs, const Transform& rhs) {
   return r;
 }
 
+struct Size {
+  int width;
+  int height;
+
+  constexpr rmlib::Point toPoint() const {
+    return { width == 0 ? 0 : width - 1, height == 0 ? 0 : height - 1 };
+  }
+
+  friend constexpr bool operator==(const Size& lhs, const Size& rhs) {
+    return lhs.width == rhs.width && lhs.height == rhs.height;
+  }
+
+  friend constexpr bool operator!=(const Size& lhs, const Size& rhs) {
+    return !(lhs == rhs);
+  }
+
+  constexpr Size& operator-=(const Size& rhs) {
+    width -= rhs.width;
+    height -= rhs.height;
+    return *this;
+  }
+
+  constexpr Size& operator/=(int rhs) {
+    width /= rhs;
+    height /= rhs;
+    return *this;
+  }
+};
+
+constexpr Size
+operator-(Size lhs, const Size& rhs) {
+  lhs -= rhs;
+  return lhs;
+}
+
+constexpr Size
+operator/(Size lhs, int rhs) {
+  lhs /= rhs;
+  return lhs;
+}
+
 struct Rect {
   /// These points are inclusive. So both are part of the Rect.
   Point topLeft;
@@ -129,6 +170,7 @@ struct Rect {
 
   constexpr int width() const { return bottomRight.x - topLeft.x + 1; }
   constexpr int height() const { return bottomRight.y - topLeft.y + 1; }
+  constexpr Size size() const { return { width(), height() }; }
 
   constexpr bool empty() const { return topLeft == bottomRight; }
 
@@ -191,21 +233,6 @@ operator<<(std::basic_ostream<char, T>& os, const Rect& r) {
   os << "{ " << r.topLeft << ", " << r.bottomRight << " }";
   return os;
 }
-
-struct Size {
-  int width;
-  int height;
-
-  constexpr rmlib::Point toPoint() const { return { width - 1, height - 1 }; }
-
-  friend bool operator==(const Size& lhs, const Size& rhs) {
-    return lhs.width == rhs.width && lhs.height == rhs.height;
-  }
-
-  friend bool operator!=(const Size& lhs, const Size& rhs) {
-    return !(lhs == rhs);
-  }
-};
 
 template<typename T>
 std::basic_ostream<char, T>&

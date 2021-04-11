@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Input.h>
 #include <UI/Timer.h>
 
 #include <vector>
@@ -8,6 +9,8 @@ namespace rmlib {
 
 class AppContext {
 public:
+  AppContext(Canvas& fbCanvas) : canvas(fbCanvas) {}
+
   TimerHandle addTimer(
     std::chrono::microseconds duration,
     Callback trigger,
@@ -51,8 +54,24 @@ public:
 
   bool shouldStop() const { return mShouldStop; }
 
+  void doLater(Callback fn) { doLaters.emplace_back(std::move(fn)); }
+  void doAllLaters() {
+    for (const auto& doLater : doLaters) {
+      doLater();
+    }
+    doLaters.clear();
+  }
+
+  input::InputManager& getInputManager() { return inputManager; }
+
+  const Canvas& getFbCanvas() const { return canvas; }
+
 private:
+  input::InputManager inputManager;
   TimerQueue timers;
+  std::vector<Callback> doLaters;
+  Canvas& canvas;
+
   bool mShouldStop = false;
 };
 

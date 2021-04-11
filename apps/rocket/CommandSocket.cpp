@@ -53,7 +53,7 @@ CommandSocket::send(std::string_view cmd) {
 
 bool
 CommandSocket::init() {
-  serverSock = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
+  serverSock = socket(AF_UNIX, SOCK_STREAM /*| SOCK_NONBLOCK*/, 0);
   if (serverSock < 0) {
     perror("opening stream socket");
     return false;

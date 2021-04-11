@@ -52,9 +52,14 @@ template<typename Derived>
 class StatelessWidget : public Widget<StatelessRenderObject<Derived>> {
 public:
   std::unique_ptr<RenderObject> createRenderObject() const {
+
     return std::make_unique<StatelessRenderObject<Derived>>(
       *static_cast<const Derived*>(this));
   }
+
+private:
+  friend Derived;
+  StatelessWidget() {}
 };
 
 } // namespace rmlib

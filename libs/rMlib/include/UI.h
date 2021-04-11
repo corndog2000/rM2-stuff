@@ -8,12 +8,17 @@
 #include <UI/StatelessWidget.h>
 
 #include <UI/Flex.h>
+#include <UI/Wrap.h>
+
 #include <UI/Gesture.h>
+#include <UI/Image.h>
 #include <UI/Layout.h>
 #include <UI/Text.h>
 
 #include <UI/AppContext.h>
 #include <UI/Util.h>
+
+#include <csignal>
 
 /// Ideas: (most stolen from flutter)
 // * Widgets are cheap to create, so have no real state.
@@ -22,19 +27,33 @@
 //    scene tree.
 namespace rmlib {
 
+namespace details {
+static AppContext* currentContext = nullptr;
+
+void
+stop(int signal) {
+  currentContext->stop();
+}
+
+} // namespace details
+
 template<typename AppWidget>
 OptError<>
 runApp(AppWidget widget) {
   auto fb = TRY(rmlib::fb::FrameBuffer::open());
-  rmlib::input::InputManager inputMgr;
-  TRY(inputMgr.openAll());
+
+  AppContext context(fb.canvas);
+  details::currentContext = &context;
+
+  TRY(context.getInputManager().openAll());
 
   auto rootRO = widget.createRenderObject();
 
   const auto fbSize = Size{ fb.canvas.width(), fb.canvas.height() };
   const auto constraints = Constraints{ fbSize, fbSize };
 
-  AppContext context;
+  std::signal(SIGINT, details::stop);
+  std::signal(SIGTERM, details::stop);
 
   while (!context.shouldStop()) {
     rootRO->rebuild(context);
@@ -51,15 +70,24 @@ runApp(AppWidget widget) {
     }
 
     const auto duration = context.getNextDuration();
-    const auto evs = TRY(inputMgr.waitForInput(duration));
+    const auto evsOrError = context.getInputManager().waitForInput(duration);
     context.checkTimers();
+    context.doAllLaters();
 
-    for (const auto& ev : evs) {
-      rootRO->handleInput(ev);
+    if (evsOrError.isError()) {
+      std::cerr << evsOrError.getError().msg << std::endl;
+    } else {
+      for (const auto& ev : *evsOrError) {
+        rootRO->handleInput(ev);
+      }
     }
 
     rootRO->reset();
   }
+
+  std::signal(SIGINT, SIG_DFL);
+  std::signal(SIGTERM, SIG_DFL);
+  details::currentContext = nullptr;
 
   return NoError{};
 }

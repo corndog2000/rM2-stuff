@@ -30,13 +30,13 @@ InputManager::InputManager() {}
 
 InputManager::~InputManager() {}
 
-ErrorOr<FileDescriptors>
+ErrorOr<BaseDevices>
 InputManager::openAll(bool monitor) {
   auto fakeDev = std::make_unique<FakeInputDevice>();
   auto& fakeDevRef = *fakeDev;
   devices.emplace("Test", std::move(fakeDev));
 
-  return FileDescriptors{ fakeDevRef, fakeDevRef, fakeDevRef };
+  return BaseDevices{ fakeDevRef, fakeDevRef, fakeDevRef };
 }
 
 ErrorOr<std::vector<Event>>

@@ -113,6 +113,10 @@ public:
     return std::make_unique<StatefulRenderObject<Derived>>(
       *static_cast<const Derived*>(this));
   }
+
+private:
+  friend Derived;
+  StatefulWidget() {}
 };
 
 } // namespace rmlib

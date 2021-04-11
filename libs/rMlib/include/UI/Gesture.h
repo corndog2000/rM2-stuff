@@ -8,12 +8,16 @@
 namespace rmlib {
 
 using PosCallback = std::function<void(Point)>;
+using KeyCallback = std::function<void(int)>;
 
 struct Gestures {
   Callback onTap;
 
   PosCallback onTouchMove;
   PosCallback onTouchDown;
+
+  KeyCallback onKeyDown;
+  KeyCallback onKeyUp;
 
   Gestures& OnTap(Callback cb) {
     onTap = std::move(cb);
@@ -29,6 +33,18 @@ struct Gestures {
     onTouchDown = std::move(cb);
     return *this;
   }
+
+  Gestures& OnKeyDown(KeyCallback cb) {
+    onKeyDown = std::move(cb);
+    return *this;
+  }
+
+  Gestures& OnKeyUp(KeyCallback cb) {
+    onKeyUp = std::move(cb);
+    return *this;
+  }
+
+  bool handlesTouch() const { return onTap || onTouchDown || onTouchMove; }
 };
 
 template<typename Child>
@@ -47,27 +63,45 @@ public:
         if constexpr (input::is_pointer_event<decltype(ev)>) {
           if (ev.isDown() && getRect().contains(ev.location) &&
               currentId == -1) {
-            currentId = ev.id;
+            if (widget->gestures.handlesTouch()) {
+              currentId = ev.id;
+            }
+
             if (widget->gestures.onTouchDown) {
               widget->gestures.onTouchDown(ev.location);
+              return;
             }
           }
 
-          if (ev.id != currentId) {
+          if (ev.id == currentId) {
+            if (ev.isUp()) {
+              currentId = -1;
+              if (widget->gestures.onTap) {
+                widget->gestures.onTap();
+              }
+              return;
+            }
+
+            if (ev.isMove() && widget->gestures.onTouchMove) {
+              widget->gestures.onTouchMove(ev.location);
+              return;
+            }
+          }
+        } else {
+          if (ev.type == input::KeyEvent::Press && widget->gestures.onKeyDown) {
+            widget->gestures.onKeyDown(ev.keyCode);
             return;
           }
 
-          if (ev.isUp()) {
-            currentId = -1;
-            if (widget->gestures.onTap) {
-              widget->gestures.onTap();
-            }
-          }
-
-          if (ev.isMove() && widget->gestures.onTouchMove) {
-            widget->gestures.onTouchMove(ev.location);
+          if (ev.type == input::KeyEvent::Release && widget->gestures.onKeyUp) {
+            widget->gestures.onKeyUp(ev.keyCode);
+            return;
           }
         }
+
+        // If we didn't return yet we didn't handle the event.
+        // So let our child handle it.
+        SingleChildRenderObject::handleInput(ev);
       },
       ev);
   }
@@ -103,6 +137,6 @@ auto
 Button(std::string text, Callback onTap) {
   return GestureDetector(
     Container(Text(text), Insets::all(2), Insets::all(2), Insets::all(1)),
-    { .onTap = std::move(onTap) });
+    Gestures{}.OnTap(std::move(onTap)));
 }
 } // namespace rmlib

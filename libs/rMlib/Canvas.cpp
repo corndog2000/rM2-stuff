@@ -15,6 +15,17 @@
 namespace rmlib {
 
 namespace {
+constexpr uint8_t
+blend(uint8_t factor, uint8_t fg, uint8_t bg) {
+  int val = bg + (int(factor) * (int(fg) - int(bg))) / 0xff;
+  return uint8_t(val);
+}
+
+constexpr uint16_t
+toRGB565(uint8_t grey) {
+  return (grey >> 3) | ((grey >> 2) << 5) | ((grey >> 3) << 11);
+}
+
 #ifdef EMULATE
 #ifdef __APPLE__
 constexpr auto font_path = "/System/Library/Fonts/SFNSMono.ttf";
@@ -213,11 +224,12 @@ Canvas::drawText(std::string_view text,
     // Draw the bitmap to canvas.
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
-        int t = textBuffer[y * w + x];
-        int pixel = bg8 + (t * (fg8 - bg8)) / 0xff;
+        auto t = textBuffer[y * w + x];
+        // int pixel = bg8 + (t * (fg8 - bg8)) / 0xff;
+        auto pixel = blend(t, fg8, bg8);
         // auto pixel = (0xff - textBuffer[y * w + x]);
-        uint16_t pixel565 =
-          (pixel >> 3) | ((pixel >> 2) << 5) | ((pixel >> 3) << 11);
+        uint16_t pixel565 = toRGB565(pixel);
+        // (pixel >> 3) | ((pixel >> 2) << 5) | ((pixel >> 3) << 11);
 
         auto memY = location.y + static_cast<int>(baseLine) + y0 + y /*- 1*/;
         auto memX = location.x + static_cast<int>(xpos) + x0 + x;
@@ -273,40 +285,48 @@ Canvas::drawLine(Point start, Point end, int val) {
   }
 }
 
+constexpr uint16_t
+greyAlphaToRGB565(uint8_t background, uint16_t pixel) {
+  uint8_t grey = pixel & 0xff;
+  uint8_t alpha = (pixel >> 8);
+
+  auto blended = blend(alpha, grey, background);
+
+  return toRGB565(blended);
+}
+
 std::optional<ImageCanvas>
-ImageCanvas::load(const char* path, int components) {
+ImageCanvas::load(const char* path, int background) {
   int width;
   int height;
   int imgComponents;
-  auto* mem = stbi_load(path, &width, &height, &imgComponents, components);
+  auto* mem = stbi_load(path, &width, &height, &imgComponents, 2);
   if (mem == nullptr) {
     return std::nullopt;
   }
 
-  if (components != 0) {
-    imgComponents = components;
-  }
-
-  Canvas result(mem, width, height, imgComponents);
+  Canvas result(mem, width, height, 2);
+  result.transform([background](auto x, auto y, uint16_t pixel) {
+    return greyAlphaToRGB565(background, pixel);
+  });
   return ImageCanvas{ result };
 }
 
 std::optional<ImageCanvas>
-ImageCanvas::load(uint8_t* data, int size, int components) {
+ImageCanvas::load(uint8_t* data, int size, int background) {
   int width;
   int height;
   int imgComponents;
-  auto* mem = stbi_load_from_memory(
-    data, size, &width, &height, &imgComponents, components);
+  auto* mem =
+    stbi_load_from_memory(data, size, &width, &height, &imgComponents, 2);
   if (mem == nullptr) {
     return std::nullopt;
   }
 
-  if (components != 0) {
-    imgComponents = components;
-  }
-
-  Canvas result(mem, width, height, imgComponents);
+  Canvas result(mem, width, height, 2);
+  result.transform([background](auto x, auto y, uint16_t pixel) {
+    return greyAlphaToRGB565(background, pixel);
+  });
   return ImageCanvas{ result };
 }
 
@@ -325,6 +345,11 @@ MemoryCanvas::MemoryCanvas(const Canvas& other, Rect rect) {
   canvas =
     Canvas(memory.get(), rect.width(), rect.height(), other.components());
   copy(canvas, { 0, 0 }, other, rect);
+}
+
+MemoryCanvas::MemoryCanvas(int width, int height, int components) {
+  memory = std::make_unique<uint8_t[]>(width * height * components);
+  canvas = Canvas(memory.get(), width, height, components);
 }
 
 } // namespace rmlib

@@ -389,6 +389,7 @@ public:
 
     // Skip frames if we were paused.
     if (diff > std::chrono::seconds(1)) {
+      std::cout << "Skipping frames...\n";
       diff = TPS;
     }
 

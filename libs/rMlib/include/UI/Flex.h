@@ -5,8 +5,6 @@
 
 namespace rmlib {
 
-enum class Axis { Horizontal, Vertical };
-
 template<typename... Children>
 class Flex;
 
@@ -129,6 +127,7 @@ private:
   const Flex<Children...>* widget;
   constexpr static auto num_children = sizeof...(Children);
 
+  // TODO: remove both:
   std::array<Size, num_children> childSizes;
   int totalSize;
 };
