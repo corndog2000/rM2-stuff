@@ -133,18 +133,6 @@ public:
 
   void handleInput(const rmlib::input::Event& ev) override {
     child->handleInput(ev);
-    // std::visit(
-    //   [this](const auto& ev) {
-    //     if constexpr (!std::is_same_v<decltype(ev),
-    //                                   const rmlib::input::KeyEvent&>) {
-    //       if (child->getRect().contains(ev.location)) {
-    //         child->handleInput(ev);
-    //       }
-    //     } else {
-    //       child->handleInput(ev);
-    //     }
-    //   },
-    //   ev);
   }
 
   UpdateRegion cleanup(rmlib::Canvas& canvas) override {
@@ -207,23 +195,6 @@ public:
     for (const auto& child : children) {
       child->handleInput(ev);
     }
-    // std::visit(
-    //   [this](const auto& ev) {
-    //     if constexpr (!std::is_same_v<decltype(ev),
-    //                                   const rmlib::input::KeyEvent&>) {
-
-    //       for (const auto& child : children) {
-    //         if (child->getRect().contains(ev.location)) {
-    //           child->handleInput(ev);
-    //         }
-    //       }
-    //     } else {
-    //       for (const auto& child : children) {
-    //         child->handleInput(ev);
-    //       }
-    //     }
-    //   },
-    //   ev);
   }
 
   UpdateRegion cleanup(rmlib::Canvas& canvas) override {

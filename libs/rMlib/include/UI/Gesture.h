@@ -11,6 +11,7 @@ using PosCallback = std::function<void(Point)>;
 using KeyCallback = std::function<void(int)>;
 
 struct Gestures {
+  Callback onAny;
   Callback onTap;
 
   PosCallback onTouchMove;
@@ -44,6 +45,11 @@ struct Gestures {
     return *this;
   }
 
+  Gestures& OnAny(Callback cb) {
+    onAny = std::move(cb);
+    return *this;
+  }
+
   bool handlesTouch() const { return onTap || onTouchDown || onTouchMove; }
 };
 
@@ -58,6 +64,10 @@ public:
     , widget(&widget) {}
 
   void handleInput(const rmlib::input::Event& ev) final {
+    if (widget->gestures.onAny) {
+      widget->gestures.onAny();
+    }
+
     std::visit(
       [this](const auto& ev) {
         if constexpr (input::is_pointer_event<decltype(ev)>) {
@@ -136,7 +146,8 @@ private:
 auto
 Button(std::string text, Callback onTap) {
   return GestureDetector(
-    Container(Text(text), Insets::all(2), Insets::all(2), Insets::all(1)),
+    Container(
+      Text(std::move(text)), Insets::all(2), Insets::all(2), Insets::all(1)),
     Gestures{}.OnTap(std::move(onTap)));
 }
 } // namespace rmlib

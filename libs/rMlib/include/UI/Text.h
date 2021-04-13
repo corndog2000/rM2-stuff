@@ -27,17 +27,10 @@ public:
   TextRenderObject(const Text& widget) : widget(&widget) {}
 
   void update(const Text& newWidget) {
-    if (newWidget.fontSize != widget->fontSize) {
+    if (newWidget.fontSize != widget->fontSize ||
+        newWidget.text != widget->text) {
       markNeedsDraw();
       markNeedsLayout();
-    } else {
-      if (newWidget.text.size() != widget->text.size()) {
-        markNeedsLayout();
-      }
-
-      if (newWidget.text != widget->text) {
-        markNeedsDraw();
-      }
     }
 
     widget = &newWidget;

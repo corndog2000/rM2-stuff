@@ -1,14 +1,9 @@
-#include "CommandSocket.h"
-#include "Commands.h"
-#include "Launcher.h"
+#include "App.h"
 
 #include <csignal>
-#include <fstream>
 #include <iostream>
 
-#include <sys/wait.h>
-#include <unistd.h>
-
+#include <Device.h>
 #include <UI.h>
 
 using namespace rmlib;
@@ -35,56 +30,6 @@ cleanup(int signal) {
   if (stopCallback) {
     stopCallback();
   }
-}
-
-bool
-parseConfig() {
-  //   const auto* home = getenv("HOME");
-  //   if (home == nullptr) {
-  //     return false;
-  //   }
-  //
-  //   auto configPath = std::string(home) + '/' + config_path_suffix;
-  //
-  //   std::ifstream ifs(configPath);
-  //   if (!ifs.is_open()) {
-  //     // TODO: default config
-  //     std::cerr << "Error opening config path\n";
-  //     return false;
-  //   }
-  //
-  //   for (std::string line; std::getline(ifs, line);) {
-  //     auto result = doCommand(launcher, line);
-  //     if (result.isError()) {
-  //       std::cerr << result.getError().msg << std::endl;
-  //     } else {
-  //       std::cout << *result << std::endl;
-  //     }
-  //   }
-
-  return true;
-}
-
-int
-runCommand(int argc, char* argv[]) {
-  std::string command;
-  for (int i = 1; i < argc; i++) {
-    command.append(argv[i]);
-    if (i != argc - 1) {
-      command.push_back(' ');
-    }
-  }
-
-  if (command.empty()) {
-    std::cerr << "Rocket running, usage: " << argv[0] << " <command>\n";
-    return EXIT_FAILURE;
-  }
-
-  if (!CommandSocket::send(command)) {
-    return EXIT_FAILURE;
-  }
-
-  return EXIT_SUCCESS;
 }
 
 template<typename Child>
@@ -118,6 +63,8 @@ public:
       if (!wasVisible) {
         doRefresh = true;
         markNeedsDraw();
+        // TODO: why!!??
+        markNeedsLayout();
       }
     } else if (widget->background != nullptr && wasVisible) {
       // Don't mark the children!
@@ -246,6 +193,10 @@ public:
   LauncherState createState() const;
 };
 
+constexpr auto default_sleep_timeout = 10;
+constexpr auto retry_sleep_timeout = 8;
+constexpr auto default_inactivity_timeout = 20;
+
 class LauncherState : public StateBase<LauncherWidget> {
 public:
   ~LauncherState() {
@@ -265,6 +216,20 @@ public:
       context.doLater(
         [this] { setState([](auto& self) { self.updateStoppedApps(); }); });
     };
+
+    inactivityTimer = context.addTimer(
+      std::chrono::minutes(1),
+      [this, &context] {
+        inactivityCountdown -= 1;
+        if (inactivityCountdown == 0) {
+          resetInactivity();
+          setState([&context](auto& self) {
+            self.startTimer(context);
+            self.show();
+          });
+        }
+      },
+      std::chrono::minutes(1));
   }
 
   auto header(AppContext& context) const {
@@ -313,6 +278,7 @@ public:
             setState([&app](auto& self) {
               std::cout << "stopping " << app.description.name << std::endl;
               const_cast<App*>(&app)->stop();
+              self.stopTimer();
             });
           },
           app.description.path == currentAppPath);
@@ -352,20 +318,39 @@ public:
       visible ? std::optional(launcher(context)) : std::nullopt, background);
 
     return GestureDetector(
-      ui, Gestures{}.OnKeyDown([this, &context](auto keyCode) {
-        if (keyCode == KEY_POWER) {
-          setState([&context](auto& self) { self.toggle(context); });
-        }
-      }));
+      ui,
+      Gestures{}
+        .OnKeyDown([this, &context](auto keyCode) {
+          if (keyCode == KEY_POWER) {
+            setState([&context](auto& self) { self.toggle(context); });
+          }
+        })
+        .OnAny([this]() { resetInactivity(); }));
   }
 
 private:
-  void sleep() {
+  bool sleep() {
     system("/sbin/rmmod brcmfmac");
-    system("echo \"mem\" > /sys/power/state");
-    // TODO: sleep before reenable?
-    std::cout << "RESUME\n";
+    int res = system("echo \"mem\" > /sys/power/state");
     system("/sbin/modprobe brcmfmac");
+
+    if (res == 0) {
+      // Get the reason
+      auto irq = rmlib::device::readFile("/sys/power/pm_wakeup_irq");
+      if (irq.isError()) {
+        std::cout << "Error getting reason: " << irq.getError().msg
+                  << std::endl;
+
+        // If there is no irq it must be the user which pressed the button:
+        return true;
+
+      } else {
+        std::cout << "Reason for wake irq: " << *irq << std::endl;
+        return false;
+      }
+    }
+
+    return false;
   }
 
   void stopTimer() {
@@ -373,7 +358,7 @@ private:
     sleepCountdown = -1;
   }
 
-  void startTimer(AppContext& context, int time = 10) {
+  void startTimer(AppContext& context, int time = default_sleep_timeout) {
     sleepCountdown = time;
     sleepTimer = context.addTimer(
       std::chrono::seconds(time == 0 ? 0 : 1),
@@ -386,15 +371,25 @@ private:
       self.sleepCountdown -= 1;
 
       if (self.sleepCountdown == -1) {
-        self.sleep();
-        self.sleepTimer.disable();
+        if (self.sleep()) {
+          // If the user pressed the button, stop the timer and return to the
+          // current app.
+          self.resetInactivity();
+          self.sleepTimer.disable();
+          self.hide(nullptr);
+        } else {
+          // Retry sleeping if failed or something else woke us.
+          self.sleepCountdown = retry_sleep_timeout;
+        }
       }
     });
   }
 
   void toggle(AppContext& context) {
     if (visible) {
-      hide();
+      bool shouldStartTimer = sleepCountdown <= 0;
+      stopTimer();
+      hide(shouldStartTimer ? &context : nullptr);
     } else {
       startTimer(context);
       show();
@@ -409,16 +404,20 @@ private:
     if (auto* current = getCurrentApp(); current != nullptr) {
       current->pause(MemoryCanvas(*fbCanvas));
     }
+
+    readApps();
     visible = true;
   }
 
-  void hide() {
+  void hide(AppContext* context) {
     if (!visible) {
       return;
     }
 
     if (auto* current = getCurrentApp(); current != nullptr) {
       switchApp(*current);
+    } else if (context != nullptr) {
+      startTimer(*context, 0);
     }
   }
 
@@ -491,9 +490,8 @@ private:
       }
 
       if (isCurrent) {
-        visible = true;
         currentAppPath = "";
-        // TODO: switch to last app
+        show();
       }
     }
   }
@@ -545,17 +543,23 @@ private:
     });
   }
 
+  void resetInactivity() const {
+    inactivityCountdown = default_inactivity_timeout;
+  }
+
   std::vector<App> apps;
   std::string currentAppPath;
 
   std::optional<MemoryCanvas> backupBuffer;
 
   TimerHandle sleepTimer;
+  TimerHandle inactivityTimer;
 
   const Canvas* fbCanvas = nullptr;
   input::InputDeviceBase* touchDevice = nullptr;
 
   int sleepCountdown = -1;
+  mutable int inactivityCountdown = default_inactivity_timeout;
   bool visible = true;
 };
 
@@ -572,36 +576,13 @@ main(int argc, char* argv[]) {
   std::signal(SIGCHLD, cleanup);
 
   runApp(LauncherWidget());
-  return EXIT_SUCCESS;
-}
 
-int
-old_main(int argc, char* argv[]) {
-  // if (CommandSocket::alreadyRunning()) {
-  //   return runCommand(argc, argv);
-  // }
-
-  // if (argc != 1) {
-  //   std::cerr << "Rocket socket not running\n";
-  //   return EXIT_FAILURE;
-  // }
-
-  // std::signal(SIGCHLD, cleanup);
-  // std::signal(SIGINT, stop);
-  // std::signal(SIGTERM, stop);
-
-  // if (auto err = launcher.init(); err.isError()) {
-  //   std::cerr << "Error init: " << err.getError().msg << std::endl;
-  //   return EXIT_FAILURE;
-  // }
-
-  // if (!parseConfig()) {
-  //   return EXIT_FAILURE;
-  // }
-
-  // launcher.run();
-
-  // launcher.closeLauncher();
+  auto fb = fb::FrameBuffer::open();
+  if (!fb.isError()) {
+    fb->canvas.set(white);
+    fb->doUpdate(
+      fb->canvas.rect(), fb::Waveform::GC16Fast, fb::UpdateFlags::None);
+  }
 
   return EXIT_SUCCESS;
 }

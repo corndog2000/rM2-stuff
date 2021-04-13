@@ -35,14 +35,13 @@ public:
 
   void checkTimers() {
     while (!timers.empty()) {
-      const auto& top = timers.top();
+      std::shared_ptr<Timer> top = timers.top();
       if (top->check()) {
-        std::shared_ptr<Timer> test = top;
         timers.pop();
 
         if (top->repeats()) {
-          test->reset();
-          timers.emplace(std::move(test));
+          top->reset();
+          timers.emplace(std::move(top));
         }
       } else {
         break;
