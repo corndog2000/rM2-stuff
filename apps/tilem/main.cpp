@@ -134,27 +134,27 @@ public:
 
 protected:
   Size doLayout(const Constraints& constraints) final {
-    const auto width = constraints.max.width;
-
-    keyWidth = width / widget->maxRowSize;
+    keyWidth = constraints.max.width / widget->maxRowSize;
     keyHeight = keyWidth / key_aspect;
 
-    const auto height = std::clamp(
-      int(width * widget->numRows / (widget->maxRowSize * key_aspect)),
-      constraints.min.height,
-      constraints.max.height);
+    const auto width = std::clamp(keyWidth * int(widget->maxRowSize),
+                                  constraints.min.width,
+                                  constraints.max.width);
+    const auto height = std::clamp(keyHeight * int(widget->numRows),
+                                   constraints.min.height,
+                                   constraints.max.height);
+    padding = constraints.max.width - keyWidth * widget->maxRowSize;
 
     return { width, height };
   }
 
-  void drawKey(Canvas& canvas, Point pos, const Key& key) {
+  void drawKey(Canvas& canvas, Point pos, const Key& key, int keyWidth) {
     const auto frontLabelHeight = key.shift.empty() && key.alpha.empty()
                                     ? keyHeight
                                     : int(front_label_factor * keyHeight);
     const auto upperLabelHeight = keyHeight - frontLabelHeight;
 
-    const auto keyWidth = int(this->keyWidth * key.width);
-
+    // Draw front label.
     {
       const auto fontSize = std::min(
         frontLabelHeight, int(key_aspect * keyWidth / key.front.size()));
@@ -168,6 +168,7 @@ protected:
       canvas.drawText(key.front, position, fontSize);
     }
 
+    // Draw alpha and 2nd label.
     {
       const auto upperLength = key.alpha.size() + key.shift.size();
       const auto fontSize =
@@ -206,13 +207,19 @@ protected:
     int y = rect.topLeft.y;
     for (const auto& row : keymap) {
 
+      int padding = this->padding;
       int x = rect.topLeft.x;
       for (const auto& key : row) {
-        const auto keyW = int(keyWidth * key.width);
+        auto keyW = int(keyWidth * key.width);
+        if (padding > 0) {
+          keyW += 1;
+          padding -= 1;
+        }
+
         if (key.scancode != 0) {
           keyLocations.emplace_back(
             Rect{ { x, y }, { x + keyW - 1, y + keyHeight - 1 } }, &key);
-          drawKey(canvas, { x, y }, key);
+          drawKey(canvas, { x, y }, key, keyW);
         }
 
         x += keyW;
@@ -266,6 +273,7 @@ private:
   std::unordered_map<int, const Key*> keyPointers;
   int keyWidth;
   int keyHeight;
+  int padding;
 };
 
 std::unique_ptr<RenderObject>
@@ -344,7 +352,7 @@ protected:
           int subX = (x - rect.topLeft.x) / scale_x;
           uint8_t data = lcd->data[subY * lcd->rowstride + subX];
           uint8_t pixel = data ? 0 : 0xff;
-          return (pixel / 16) << 1;
+          return (pixel >> 4) << 1;
         },
         rect);
     }
@@ -438,7 +446,7 @@ public:
   auto closeButton(AppContext& context, int fontSize) const {
     return Sized(GestureDetector(
                    Border(Text("X", fontSize), Insets{ 0, 0, /* left */ 2, 0 }),
-                   Gestures{ .onTap = [&context] { context.stop(); } }),
+                   Gestures{}.OnTap([&context] { context.stop(); })),
                  fontSize,
                  fontSize);
   }
