@@ -78,8 +78,7 @@ struct Constraints {
 };
 
 struct UpdateRegion {
-  constexpr UpdateRegion()
-    : region({ { 0, 0 }, { 0, 0 } }), waveform(fb::Waveform::DU) {}
+  constexpr UpdateRegion() : region(), waveform(fb::Waveform::DU) {}
 
   constexpr UpdateRegion(Rect region)
     : region(region), waveform(fb::Waveform::GC16Fast) {}

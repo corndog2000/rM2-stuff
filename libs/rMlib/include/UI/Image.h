@@ -19,12 +19,13 @@ private:
   int color;
 };
 
-class ColoredRenderObject : public RenderObject {
+class ColoredRenderObject : public LeafRenderObject<Colored> {
 public:
-  ColoredRenderObject(const Colored& widget) : widget(&widget) {}
+  using LeafRenderObject<Colored>::LeafRenderObject;
 
   void update(const Colored& newWidget) {
     if (newWidget.color != widget->color) {
+      std::cout << "color changed\n";
       markNeedsDraw();
     }
     widget = &newWidget;
@@ -49,9 +50,6 @@ protected:
     canvas.set(rect, widget->color);
     return UpdateRegion{ rect };
   }
-
-private:
-  const Colored* widget;
 };
 
 inline std::unique_ptr<RenderObject>
@@ -69,15 +67,13 @@ public:
 
   std::unique_ptr<RenderObject> createRenderObject() const;
 
-private:
-  friend class ImageRenderObject;
   const Canvas& canvas;
   bool stretch;
 };
 
-class ImageRenderObject : public RenderObject {
+class ImageRenderObject : public LeafRenderObject<Image> {
 public:
-  ImageRenderObject(const Image& widget) : widget(&widget) {}
+  using LeafRenderObject<Image>::LeafRenderObject;
 
   void update(const Image& newWidget) {
     if (newWidget.canvas != widget->canvas) {
@@ -116,7 +112,7 @@ protected:
       [&](int x, int y, int old) {
         int subY = (y - rect.topLeft.y - offset_y) / scale_y;
         int subX = (x - rect.topLeft.x - offset_x) / scale_x;
-        if (!widget->canvas.rect().contains({ subX, subY })) {
+        if (!widget->canvas.rect().contains(Point{ subX, subY })) {
           return old;
         }
 
@@ -128,9 +124,6 @@ protected:
 
     return UpdateRegion{ rect };
   }
-
-private:
-  const Image* widget;
 };
 
 inline std::unique_ptr<RenderObject>

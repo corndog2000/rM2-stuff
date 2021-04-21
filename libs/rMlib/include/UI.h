@@ -56,7 +56,7 @@ runApp(AppWidget widget) {
   std::signal(SIGTERM, details::stop);
 
   while (!context.shouldStop()) {
-    rootRO->rebuild(context);
+    rootRO->rebuild(context, nullptr);
 
     const auto size = rootRO->layout(constraints);
     const auto rect = rmlib::Rect{ { 0, 0 }, size.toPoint() };

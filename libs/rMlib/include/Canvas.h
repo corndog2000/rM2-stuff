@@ -60,7 +60,7 @@ public:
 
   template<typename Func>
   void transform(Func&& f, Rect r) {
-    assert(rect().contains(r.bottomRight) && rect().contains(r.topLeft));
+    assert(rect().contains(r));
     switch (mComponents) {
       case 1:
         transformImpl<uint8_t>(std::forward<Func>(f), r);
@@ -102,7 +102,7 @@ public:
   }
 
   void set(Rect r, int value) {
-    assert(rect().contains(r.bottomRight) && rect().contains(r.topLeft));
+    assert(rect().contains(r));
     transform([value](auto x, auto y, auto v) { return value; }, r);
   }
 
@@ -235,11 +235,8 @@ copy(Canvas& dest,
      const Canvas& src,
      const Rect& srcRect) {
   assert(dest.components() == src.components());
-  assert(src.rect().contains(srcRect.topLeft) &&
-         src.rect().contains(srcRect.bottomRight));
-
-  assert(dest.rect().contains(srcRect.topLeft + destOffset) &&
-         dest.rect().contains(srcRect.bottomRight + destOffset));
+  assert(src.rect().contains(srcRect));
+  assert(dest.rect().contains(srcRect + destOffset));
 
   for (int y = srcRect.topLeft.y; y <= srcRect.bottomRight.y; y++) {
     auto* srcPixel = src.getPtr<>(srcRect.topLeft.x, y);
@@ -256,11 +253,8 @@ transform(Canvas& dest,
           const Canvas& src,
           const Rect& srcRect,
           Func&& f) {
-  assert(src.rect().contains(srcRect.topLeft) &&
-         src.rect().contains(srcRect.bottomRight));
-
-  assert(dest.rect().contains(srcRect.topLeft + destOffset) &&
-         dest.rect().contains(srcRect.bottomRight + destOffset));
+  assert(src.rect().contains(srcRect));
+  assert(dest.rect().contains(srcRect + destOffset));
 
   for (int y = srcRect.topLeft.y; y <= srcRect.bottomRight.y; y++) {
     for (int x = srcRect.topLeft.x; x <= srcRect.bottomRight.x; x++) {

@@ -57,28 +57,31 @@ template<typename Child>
 class GestureDetector;
 
 template<typename Child>
-class GestureRenderObject : public SingleChildRenderObject {
+class GestureRenderObject
+  : public SingleChildRenderObject<GestureDetector<Child>> {
 public:
-  GestureRenderObject(const GestureDetector<Child>& widget)
-    : SingleChildRenderObject(widget.child.createRenderObject())
-    , widget(&widget) {}
+  using SingleChildRenderObject<
+    GestureDetector<Child>>::SingleChildRenderObject;
+  // GestureRenderObject(const GestureDetector<Child>& widget)
+  //   : SingleChildRenderObject(widget.child.createRenderObject())
+  //   , widget(&widget) {}
 
   void handleInput(const rmlib::input::Event& ev) final {
-    if (widget->gestures.onAny) {
-      widget->gestures.onAny();
+    if (this->widget->gestures.onAny) {
+      this->widget->gestures.onAny();
     }
 
     std::visit(
       [this](const auto& ev) {
         if constexpr (input::is_pointer_event<decltype(ev)>) {
-          if (ev.isDown() && getRect().contains(ev.location) &&
+          if (ev.isDown() && this->getRect().contains(ev.location) &&
               currentId == -1) {
-            if (widget->gestures.handlesTouch()) {
+            if (this->widget->gestures.handlesTouch()) {
               currentId = ev.id;
             }
 
-            if (widget->gestures.onTouchDown) {
-              widget->gestures.onTouchDown(ev.location);
+            if (this->widget->gestures.onTouchDown) {
+              this->widget->gestures.onTouchDown(ev.location);
               return;
             }
           }
@@ -86,49 +89,49 @@ public:
           if (ev.id == currentId) {
             if (ev.isUp()) {
               currentId = -1;
-              if (widget->gestures.onTap) {
-                widget->gestures.onTap();
+              if (this->widget->gestures.onTap) {
+                this->widget->gestures.onTap();
               }
               return;
             }
 
-            if (ev.isMove() && widget->gestures.onTouchMove) {
-              widget->gestures.onTouchMove(ev.location);
+            if (ev.isMove() && this->widget->gestures.onTouchMove) {
+              this->widget->gestures.onTouchMove(ev.location);
               return;
             }
           }
         } else {
-          if (ev.type == input::KeyEvent::Press && widget->gestures.onKeyDown) {
-            widget->gestures.onKeyDown(ev.keyCode);
+          if (ev.type == input::KeyEvent::Press &&
+              this->widget->gestures.onKeyDown) {
+            this->widget->gestures.onKeyDown(ev.keyCode);
             return;
           }
 
-          if (ev.type == input::KeyEvent::Release && widget->gestures.onKeyUp) {
-            widget->gestures.onKeyUp(ev.keyCode);
+          if (ev.type == input::KeyEvent::Release &&
+              this->widget->gestures.onKeyUp) {
+            this->widget->gestures.onKeyUp(ev.keyCode);
             return;
           }
         }
 
         // If we didn't return yet we didn't handle the event.
         // So let our child handle it.
-        SingleChildRenderObject::handleInput(ev);
+        SingleChildRenderObject<GestureDetector<Child>>::handleInput(ev);
       },
       ev);
   }
 
   void update(const GestureDetector<Child>& newWidget) {
-    widget = &newWidget;
-    widget->child.update(*child);
+    this->widget = &newWidget;
+    this->widget->child.update(*this->child);
   }
 
 private:
-  const GestureDetector<Child>* widget;
   int currentId = -1;
 };
 
 template<typename Child>
 class GestureDetector : public Widget<GestureRenderObject<Child>> {
-private:
 public:
   GestureDetector(Child child, Gestures gestures)
     : child(std::move(child)), gestures(std::move(gestures)) {}
@@ -137,8 +140,6 @@ public:
     return std::make_unique<GestureRenderObject<Child>>(*this);
   }
 
-private:
-  friend class GestureRenderObject<Child>;
   Child child;
   Gestures gestures;
 };

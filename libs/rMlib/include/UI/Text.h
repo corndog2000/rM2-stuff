@@ -24,7 +24,8 @@ private:
 
 class TextRenderObject : public RenderObject {
 public:
-  TextRenderObject(const Text& widget) : widget(&widget) {}
+  TextRenderObject(const Text& widget)
+    : RenderObject(typeID::type_id<Text>()), widget(&widget) {}
 
   void update(const Text& newWidget) {
     if (newWidget.fontSize != widget->fontSize ||

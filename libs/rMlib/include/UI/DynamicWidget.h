@@ -1,66 +1,81 @@
 #pragma once
 
 #include <UI/RenderObject.h>
+#include <UI/TypeID.h>
 
 namespace rmlib {
-namespace details {
-class type_id_t {
-  using sig = type_id_t();
-
-  sig* id;
-  type_id_t(sig* id) : id{ id } {}
-
-public:
-  template<typename T>
-  friend type_id_t type_id();
-
-  bool operator==(type_id_t o) const { return id == o.id; }
-  bool operator!=(type_id_t o) const { return id != o.id; }
-};
-
-template<typename T>
-type_id_t
-type_id() {
-  return &type_id<T>;
-}
-} // namespace details
 
 class DynamicWidget {
 private:
-  struct DynamicRenderObject : public SingleChildRenderObject {
+  // TODO: have common base class with SSRO -> proxyRO
+  struct DynamicRenderObject : public RenderObject {
     DynamicRenderObject(std::unique_ptr<RenderObject> ro,
-                        details::type_id_t typeID)
-      : SingleChildRenderObject(std::move(ro)), typeID(typeID) {}
-
-    details::type_id_t typeID;
-    rmlib::Rect lastRect;
-    bool justChanged = false;
+                        typeID::type_id_t typeID)
+      : RenderObject(typeID), child(std::move(ro)) {}
 
     RenderObject& getChild() { return *child; }
 
-    void setChild(std::unique_ptr<RenderObject> ro, details::type_id_t typeID) {
+    void setChild(std::unique_ptr<RenderObject> ro, typeID::type_id_t typeID) {
       child = std::move(ro);
-      this->typeID = typeID;
-      justChanged = true;
+      this->mTypeID = typeID;
+    }
+
+    void handleInput(const rmlib::input::Event& ev) override {
+      child->handleInput(ev);
     }
 
     UpdateRegion cleanup(rmlib::Canvas& canvas) override {
-      if (justChanged) {
-        justChanged = false;
-        canvas.set(lastRect, rmlib::white);
-        return UpdateRegion{ lastRect, rmlib::fb::Waveform::DU };
+      if (isFullDraw()) {
+        return RenderObject::cleanup(canvas);
       }
 
-      return SingleChildRenderObject::cleanup(canvas);
+      return child->cleanup(canvas);
+    }
+
+    void markNeedsLayout() override {
+      RenderObject::markNeedsLayout();
+      if (child) {
+        child->markNeedsLayout();
+      }
+    }
+
+    void markNeedsDraw(bool full = true) override {
+      RenderObject::markNeedsDraw(full);
+      if (child) {
+        child->markNeedsDraw(full);
+      }
+    }
+
+    void rebuild(AppContext& context, const BuildContext* parent) final {
+      // RenderObject::rebuild(context, parent);
+      // const auto buildCtx = BuildContext{ *this, parent };
+      child->rebuild(context, parent);
+    }
+
+    void reset() override {
+      RenderObject::reset();
+      child->reset();
+    }
+
+  protected:
+    Size doLayout(const Constraints& constraints) override {
+      return child->layout(constraints);
     }
 
     UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
-      if (child->RenderObject::needsDraw()) {
-        lastRect = rect;
-      }
-
       return child->draw(rect, canvas);
     }
+
+    bool getNeedsDraw() const override {
+      return RenderObject::getNeedsDraw() || child->needsDraw();
+    }
+
+    bool getNeedsLayout() const override {
+      return RenderObject::getNeedsLayout() || child->needsLayout();
+    }
+
+  private:
+    std::unique_ptr<RenderObject> child;
   };
 
   struct DynamicWidgetBase {
@@ -75,13 +90,13 @@ private:
 
     std::unique_ptr<RenderObject> createRenderObject() const final {
       return std::make_unique<DynamicRenderObject>(widget.createRenderObject(),
-                                                   details::type_id<W>());
+                                                   typeID::type_id<W>());
     }
 
     void update(RenderObject& ro) const final {
       auto& dynRo = *static_cast<DynamicRenderObject*>(&ro);
-      if (dynRo.typeID != details::type_id<W>()) {
-        dynRo.setChild(widget.createRenderObject(), details::type_id<W>());
+      if (dynRo.getWidgetTypeID() != typeID::type_id<W>()) {
+        dynRo.setChild(widget.createRenderObject(), typeID::type_id<W>());
       } else {
         widget.update(dynRo.getChild());
       }

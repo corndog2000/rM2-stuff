@@ -2,22 +2,36 @@
 
 #include <Input.h>
 
+#include <UI/BuildContext.h>
+#include <UI/TypeID.h>
 #include <UI/Util.h>
 
 namespace rmlib {
 
 class AppContext;
+class RenderObject;
+
+struct BuildContext {
+  const RenderObject& renderObject;
+  const BuildContext* parent;
+
+  BuildContext(const RenderObject& ro, const BuildContext* parent)
+    : renderObject(ro), parent(parent) {}
+
+  template<typename RO>
+  const RO* getRenderObject() const;
+};
 
 class RenderObject {
   static int roCount;
 
 public:
-  RenderObject() : mID(roCount++) {
+  RenderObject(typeID::type_id_t typeID) : mTypeID(typeID), mID(roCount++) {
 #ifndef NDEBUG
     std::cout << "alloc RO: " << mID << "\n";
 #endif
   }
-  // RenderObject(RenderContext& context) : context(context) {}
+
   virtual ~RenderObject() {
 #ifndef NDEBUG
     std::cout << "free RO: " << mID << "\n";
@@ -64,9 +78,11 @@ public:
 
   virtual void handleInput(const rmlib::input::Event& ev) {}
 
-  virtual void rebuild(AppContext& context) {
+  virtual void rebuild(AppContext& context, const BuildContext* parent) {
+    buildContext.emplace(*this, parent);
+
     if (mNeedsRebuild) {
-      doRebuild(context);
+      doRebuild(context, *buildContext);
       mNeedsRebuild = false;
     }
   }
@@ -94,10 +110,13 @@ public:
     needsDrawCache.reset();
   }
 
+  typeID::type_id_t getWidgetTypeID() const { return mTypeID; }
+
 protected:
   virtual Size doLayout(const Constraints& Constraints) = 0;
   virtual UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) = 0;
-  virtual void doRebuild(AppContext& context) {}
+  virtual void doRebuild(AppContext& context,
+                         const BuildContext& buildContext) {}
 
   virtual bool getNeedsDraw() const { return mNeedsDraw != No; }
   virtual bool getNeedsLayout() const { return mNeedsLayout; }
@@ -105,9 +124,12 @@ protected:
   bool isPartialDraw() const { return mNeedsDraw == Partial; }
   bool isFullDraw() const { return mNeedsDraw == Full; }
 
+  typeID::type_id_t mTypeID;
+  std::optional<BuildContext> buildContext;
+
 private:
   int mID;
-  rmlib::Rect rect = { { 0, 0 }, { 0, 0 } };
+  rmlib::Rect rect;
 
   Size lastSize = { 0, 0 };
 
@@ -120,16 +142,40 @@ private:
   enum { No, Full, Partial } mNeedsDraw = Full;
 
   bool mNeedsRebuild = false;
-  // RenderContext& context;
 };
 
 int RenderObject::roCount = 0;
 
+template<typename Widget>
+class LeafRenderObject : public RenderObject {
+public:
+  using WidgetType = Widget;
+
+  LeafRenderObject(const Widget& widget)
+    : RenderObject(typeID::type_id<Widget>()), widget(&widget) {}
+
+protected:
+  const Widget* widget;
+};
+
+template<typename Widget>
 class SingleChildRenderObject : public RenderObject {
 public:
-  SingleChildRenderObject() = default;
-  SingleChildRenderObject(std::unique_ptr<RenderObject> child)
-    : child(std::move(child)) {}
+  using WidgetType = Widget;
+
+  SingleChildRenderObject(const Widget& widget)
+    : RenderObject(typeID::type_id<Widget>())
+    , widget(&widget)
+    , child(widget.child.createRenderObject()) {}
+
+  SingleChildRenderObject(const Widget& widget,
+                          std::unique_ptr<RenderObject> child)
+    : RenderObject(typeID::type_id<Widget>())
+    , widget(&widget)
+    , child(std::move(child)) {}
+
+  // SingleChildRenderObject(std::unique_ptr<RenderObject> child)
+  //   : SingleChildRenderObject(), child(std::move(child)) {}
 
   void handleInput(const rmlib::input::Event& ev) override {
     child->handleInput(ev);
@@ -156,9 +202,9 @@ public:
     }
   }
 
-  void rebuild(AppContext& context) final {
-    RenderObject::rebuild(context);
-    child->rebuild(context);
+  void rebuild(AppContext& context, const BuildContext* parent) final {
+    RenderObject::rebuild(context, parent);
+    child->rebuild(context, &*buildContext);
   }
 
   void reset() override {
@@ -183,13 +229,32 @@ protected:
     return RenderObject::getNeedsLayout() || child->needsLayout();
   }
 
+  const Widget* widget;
   std::unique_ptr<RenderObject> child;
 };
 
+template<typename Widget>
+std::vector<std::unique_ptr<RenderObject>>
+getChildren(const std::vector<Widget>& widgets) {
+
+  std::vector<std::unique_ptr<RenderObject>> children;
+  children.reserve(widgets.size());
+
+  std::transform(widgets.begin(),
+                 widgets.end(),
+                 std::back_inserter(children),
+                 [](const auto& child) { return child.createRenderObject(); });
+
+  return children;
+}
+
+template<typename Widget>
 class MultiChildRenderObject : public RenderObject {
 public:
+  using WidgetType = Widget;
+
   MultiChildRenderObject(std::vector<std::unique_ptr<RenderObject>> children)
-    : children(std::move(children)) {}
+    : RenderObject(typeID::type_id<Widget>()), children(std::move(children)) {}
 
   void handleInput(const rmlib::input::Event& ev) override {
     for (const auto& child : children) {
@@ -223,10 +288,10 @@ public:
     }
   }
 
-  void rebuild(AppContext& context) final {
-    RenderObject::rebuild(context);
+  void rebuild(AppContext& context, const BuildContext* parent) final {
+    RenderObject::rebuild(context, parent);
     for (const auto& child : children) {
-      child->rebuild(context);
+      child->rebuild(context, &*buildContext);
     }
   }
 
@@ -238,6 +303,31 @@ public:
   }
 
 protected:
+  // template<typename Widget>
+  void updateChildren(const Widget& widget, const Widget& newWidget) {
+
+    auto updateEnd = children.size();
+
+    if (newWidget.children.size() != children.size()) {
+      // TODO: move the ROs out of tree and reuse?
+      if (newWidget.children.size() < children.size()) {
+        children.resize(newWidget.children.size());
+        updateEnd = newWidget.children.size();
+      } else {
+        children.reserve(newWidget.children.size());
+        std::transform(
+          std::next(newWidget.children.begin(), updateEnd),
+          newWidget.children.end(),
+          std::back_inserter(children),
+          [](const auto& child) { return child.createRenderObject(); });
+      }
+    }
+
+    for (size_t i = 0; i < updateEnd; i++) {
+      newWidget.children[i].update(*children[i]);
+    }
+  }
+
   bool getNeedsDraw() const override {
     return RenderObject::getNeedsDraw() ||
            std::any_of(children.begin(), children.end(), [](const auto& child) {
@@ -254,5 +344,21 @@ protected:
 
   std::vector<std::unique_ptr<RenderObject>> children;
 };
+
+template<typename RO>
+const RO*
+BuildContext::getRenderObject() const {
+  const auto widgetTypeID = typeID::type_id<typename RO::WidgetType>();
+
+  if (renderObject.getWidgetTypeID() == widgetTypeID) {
+    return static_cast<const RO*>(&renderObject);
+  }
+
+  if (parent == nullptr) {
+    return nullptr;
+  }
+
+  return parent->getRenderObject<RO>();
+}
 
 } // namespace rmlib

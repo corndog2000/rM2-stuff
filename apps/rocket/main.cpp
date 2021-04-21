@@ -2,6 +2,7 @@
 
 #include <csignal>
 #include <iostream>
+#include <sys/wait.h>
 
 #include <Device.h>
 #include <UI.h>
@@ -36,65 +37,66 @@ template<typename Child>
 class Hideable;
 
 template<typename Child>
-class HideableRenderObject : public SingleChildRenderObject {
+class HideableRenderObject : public SingleChildRenderObject<Hideable<Child>> {
 public:
   HideableRenderObject(const Hideable<Child>& widget)
-    : SingleChildRenderObject(
-        widget.child.has_value() ? widget.child->createRenderObject() : nullptr)
-    , widget(&widget) {}
+    : SingleChildRenderObject<Hideable<Child>>(
+        widget,
+        widget.child.has_value() ? widget.child->createRenderObject()
+                                 : nullptr) {}
 
   Size doLayout(const Constraints& constraints) override {
-    if (!widget->child.has_value()) {
+    if (!this->widget->child.has_value()) {
       return constraints.min;
     }
-    return child->layout(constraints);
+    return this->child->layout(constraints);
   }
 
   void update(const Hideable<Child>& newWidget) {
-    auto wasVisible = widget->child.has_value();
-    widget = &newWidget;
-    if (widget->child.has_value()) {
-      if (child == nullptr) {
-        child = widget->child->createRenderObject();
+    auto wasVisible = this->widget->child.has_value();
+    this->widget = &newWidget;
+    if (this->widget->child.has_value()) {
+      if (this->child == nullptr) {
+        this->child = this->widget->child->createRenderObject();
       } else {
-        widget->child->update(*child);
+        this->widget->child->update(*this->child);
       }
 
       if (!wasVisible) {
         doRefresh = true;
-        markNeedsDraw();
+        this->markNeedsDraw();
         // TODO: why!!??
-        markNeedsLayout();
+        this->markNeedsLayout();
       }
-    } else if (widget->background != nullptr && wasVisible) {
+    } else if (this->widget->background != nullptr && wasVisible) {
       // Don't mark the children!
       RenderObject::markNeedsDraw();
     }
   }
 
   void handleInput(const rmlib::input::Event& ev) override {
-    if (widget->child.has_value()) {
-      child->handleInput(ev);
+    if (this->widget->child.has_value()) {
+      this->child->handleInput(ev);
     }
   }
 
 protected:
   UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
-    if (!widget->child.has_value()) {
-      if (widget->background != nullptr) {
+    if (!this->widget->child.has_value()) {
+      if (this->widget->background != nullptr) {
         const auto offset =
-          (rect.size() - widget->background->rect().size()) / 2;
+          (rect.size() - this->widget->background->rect().size()) / 2;
         copy(canvas,
              offset.toPoint(),
-             *widget->background,
-             widget->background->rect());
+             *this->widget->background,
+             this->widget->background->rect());
         return UpdateRegion{ rect };
       }
 
       return UpdateRegion{};
     }
 
-    auto result = child->draw(rect, canvas);
+    auto result = this->child->draw(rect, canvas);
     if (doRefresh) {
       doRefresh = false;
       result.waveform = fb::Waveform::GC16;
@@ -105,7 +107,6 @@ protected:
   }
 
 private:
-  const Hideable<Child>* widget;
   Size childSize;
   bool doRefresh = false;
 };
@@ -144,7 +145,7 @@ public:
     , onKill(std::move(onKill))
     , isCurrent(isCurrent) {}
 
-  auto build(AppContext&) const {
+  auto build(AppContext&, const BuildContext&) const {
     const Canvas& canvas =
       app.savedFb.has_value() ? app.savedFb->canvas : missingImage.canvas;
 
@@ -169,7 +170,7 @@ public:
   AppWidget(const App& app, Callback onLaunch)
     : app(app), onLaunch(std::move(onLaunch)) {}
 
-  auto build(AppContext&) const {
+  auto build(AppContext&, const BuildContext&) const {
     const Canvas& canvas = app.description.iconImage.has_value()
                              ? app.description.iconImage->canvas
                              : missingImage.canvas;
@@ -304,7 +305,7 @@ public:
     return Cleared(Column(header(context), runningApps(), appList()));
   }
 
-  auto build(AppContext& context) const {
+  auto build(AppContext& context, const BuildContext&) const {
     const Canvas* background = nullptr;
     if (auto* currentApp = getCurrentApp(); currentApp != nullptr) {
       if (currentApp->savedFb.has_value()) {
@@ -498,7 +499,10 @@ private:
 
   void readApps() {
 #ifdef EMULATE
-    constexpr auto apps_path = "/Users/timo/.config/draft";
+    const auto apps_path = [] {
+      const auto* home = getenv("HOME");
+      return std::string(home) + "/.config/draft";
+    }();
 #else
     constexpr auto apps_path = "/etc/draft";
 #endif

@@ -9,50 +9,21 @@ template<typename Child>
 class Wrap;
 
 template<typename Child>
-class WrapRenderObject : public MultiChildRenderObject {
+class WrapRenderObject : public MultiChildRenderObject<Wrap<Child>> {
 public:
   WrapRenderObject(const Wrap<Child>& widget)
-    : MultiChildRenderObject([&widget] {
-      std::vector<std::unique_ptr<RenderObject>> children;
-      children.reserve(widget.children.size());
-      std::transform(
-        widget.children.begin(),
-        widget.children.end(),
-        std::back_inserter(children),
-        [](const auto& child) { return child.createRenderObject(); });
-      return children;
-    }())
+    : MultiChildRenderObject<Wrap<Child>>(getChildren(widget.children))
     , widget(&widget) {}
 
   void update(const Wrap<Child>& newWidget) {
-    if (newWidget.axis != widget->axis) {
-      markNeedsLayout();
-      markNeedsDraw();
-    }
+    bool changed = newWidget.axis != widget->axis ||
+                   newWidget.children.size() != this->children.size();
 
-    auto updateEnd = children.size();
+    this->updateChildren(*widget, newWidget);
 
-    if (newWidget.children.size() != children.size()) {
-
-      // TODO: move the ROs out of tree and reuse?
-      if (newWidget.children.size() < children.size()) {
-        children.resize(newWidget.children.size());
-        updateEnd = newWidget.children.size();
-      } else {
-        children.reserve(newWidget.children.size());
-        std::transform(
-          std::next(newWidget.children.begin(), updateEnd),
-          newWidget.children.end(),
-          std::back_inserter(children),
-          [](const auto& child) { return child.createRenderObject(); });
-      }
-
-      markNeedsLayout();
-      markNeedsDraw();
-    }
-
-    for (size_t i = 0; i < updateEnd; i++) {
-      newWidget.children[i].update(*children[i]);
+    if (changed) {
+      this->markNeedsLayout();
+      this->markNeedsDraw();
     }
 
     widget = &newWidget;
@@ -70,11 +41,11 @@ protected:
     runSizes.clear();
     Size result = { 0, 0 };
     Size rowSize = { 0, 0 };
-    for (const auto& child : children) {
+    for (const auto& child : this->children) {
       const auto oldSize = child->getSize();
       const auto size = child->layout(childConstraints);
       if (oldSize != size) {
-        markNeedsDraw();
+        this->markNeedsDraw();
       }
 
       if (isVertical()) {
@@ -134,7 +105,7 @@ protected:
     auto offset = origin;
 
     int run = 0;
-    for (const auto& child : children) {
+    for (const auto& child : this->children) {
       const auto size = child->getSize();
 
       if (isVertical()) {
@@ -183,6 +154,7 @@ public:
 
 private:
   friend class WrapRenderObject<Child>;
+  friend class MultiChildRenderObject<Wrap<Child>>;
   std::vector<Child> children;
   Axis axis;
 };

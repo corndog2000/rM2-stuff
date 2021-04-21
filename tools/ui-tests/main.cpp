@@ -9,6 +9,8 @@
 #include <Input.h>
 
 #include <UI.h>
+#include <UI/Navigator.h>
+#include <UI/Stack.h>
 #include <UI/Wrap.h>
 
 using namespace rmlib;
@@ -17,7 +19,7 @@ class LabledInt : public StatelessWidget<LabledInt> {
 public:
   LabledInt(std::string label, int n) : label(std::move(label)), integer(n) {}
 
-  auto build(AppContext& context) const {
+  auto build(AppContext& context, const BuildContext&) const {
     return Row(Text(label), Text(std::to_string(integer)));
   }
 
@@ -30,7 +32,7 @@ class ToggleTest : public StatefulWidget<ToggleTest> {
 public:
   class State : public StateBase<ToggleTest> {
   public:
-    auto build(AppContext& context) const {
+    auto build(AppContext& context, const BuildContext&) const {
       return GestureDetector(Border(Padding(Text(""), Insets::all(on ? 0 : 8)),
                                     Insets::all(on ? 10 : 2)),
                              Gestures{}.OnTap([this]() {
@@ -55,8 +57,8 @@ public:
         std::chrono::seconds(1), [this] { tick(); }, std::chrono::seconds(1));
     }
 
-    auto build(AppContext& context) const {
-      return Text(std::to_string(ticks));
+    auto build(AppContext& context, const BuildContext&) const {
+      return Text(getWidget().name + ": " + std::to_string(ticks));
     }
 
   private:
@@ -68,7 +70,11 @@ public:
     TimerHandle timer;
   };
 
+  TimerTest(std::string name) : name(name) {}
+
   State createState() const { return State{}; }
+
+  std::string name;
 };
 
 class CounterTest : public StatefulWidget<CounterTest> {
@@ -77,12 +83,12 @@ public:
   public:
     void init(AppContext& context) {}
 
-    DynamicWidget build(AppContext& context) const {
+    DynamicWidget build(AppContext& context, const BuildContext&) const {
       if (count < 5) {
         return Column(LabledInt("Counter: ", count),
                       Row(Button("-1", [this] { decrease(); }),
                           Button("+1", [this] { increase(); })),
-                      TimerTest());
+                      TimerTest(std::to_string(count)));
       } else {
         return Row(Button("reset", [this]() { reset(); }), ToggleTest());
       }
@@ -112,7 +118,7 @@ class TestW : public StatelessWidget<TestW> {
 public:
   TestW(int i) : x(i) {}
 
-  auto build(AppContext&) const {
+  auto build(AppContext&, const BuildContext&) const {
     return Container(Text("Test: " + std::to_string(x)),
                      Insets::all(2),
                      Insets::all(2),
@@ -129,7 +135,7 @@ public:
   public:
     void init(AppContext& context) {}
 
-    auto build(AppContext& context) const {
+    auto build(AppContext& context, const BuildContext&) const {
       std::vector<TestW> widgets;
       for (auto i = 0; i < count; i++) {
         widgets.emplace_back(i);
@@ -160,10 +166,37 @@ public:
   State createState() const { return State{}; }
 };
 
+class DialogTest : public StatelessWidget<DialogTest> {
+public:
+  auto build(AppContext&, const BuildContext& ctx) const {
+    return Center((Border(
+      Cleared(Column(
+        Text("Downloading ROM failed"),
+        Row(Padding(Button("OK", [] {}), Insets::all(10)),
+            Padding(Button("close", [&ctx] { Navigator::of(ctx).pop(); }),
+                    Insets::all(10))))),
+      Insets::all(5))));
+  }
+};
+
+class NavTest : public StatelessWidget<NavTest> {
+public:
+  auto build(AppContext&, const BuildContext& buildCtx) const {
+    return Center(Button("show dialog", [&buildCtx] {
+      Navigator::of(buildCtx).push(OverlayEntry{ [] { return DialogTest(); } });
+    }));
+  }
+};
+
+auto
+navTest() {
+  return Navigator(NavTest());
+}
+
 int
 main() {
   // auto optErr = runApp(Center(Row(Text("Test:"), CounterTest())));
-  auto optErr = runApp(Center(WrapTest()));
+  auto optErr = runApp(navTest());
 
   if (optErr.isError()) {
     std::cerr << optErr.getError().msg << "\n";

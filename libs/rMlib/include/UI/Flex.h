@@ -9,18 +9,15 @@ template<typename... Children>
 class Flex;
 
 template<typename... Children>
-class FlexRenderObject : public MultiChildRenderObject {
+class FlexRenderObject : public MultiChildRenderObject<Flex<Children...>> {
 public:
   FlexRenderObject(const Flex<Children...>& widget)
-    : MultiChildRenderObject(std::apply(
+    : MultiChildRenderObject<Flex<Children...>>(std::apply(
         [](auto&... child) {
           auto array = std::array{ child.createRenderObject()... };
           std::vector<std::unique_ptr<RenderObject>> objs;
           objs.reserve(num_children);
-
-          for (auto& elem : array) {
-            objs.emplace_back(std::move(elem));
-          }
+          std::move(array.begin(), array.end(), std::back_inserter(objs));
           return objs;
         },
         widget.children))
@@ -28,14 +25,14 @@ public:
 
   void update(const Flex<Children...>& newWidget) {
     if (newWidget.axis != widget->axis) {
-      markNeedsLayout();
-      markNeedsDraw();
+      this->markNeedsLayout();
+      this->markNeedsDraw();
     }
 
     std::apply(
       [this](const auto&... childWidget) {
         int i = 0;
-        (childWidget.update(*children[i++]), ...);
+        (childWidget.update(*this->children[i++]), ...);
       },
       newWidget.children);
     widget = &newWidget;
@@ -56,10 +53,10 @@ protected:
                        { Constraints::unbound, constraints.max.height } };
 
     for (auto i = 0u; i < num_children; i++) {
-      const auto newSize = children[i]->layout(childConstraints);
+      const auto newSize = this->children[i]->layout(childConstraints);
       if (isVertical() ? newSize.height != childSizes[i].height
                        : newSize.width != childSizes[i].width) {
-        markNeedsDraw();
+        this->markNeedsDraw();
       }
 
       childSizes[i] = newSize;
@@ -98,7 +95,7 @@ protected:
 
     for (auto i = 0u; i < num_children; i++) {
       const auto& size = childSizes[i];
-      const auto& child = children[i];
+      const auto& child = this->children[i];
 
       const auto otherOffset = isVertical() ? (rect.width() - size.width) / 2
                                             : (rect.height() - size.height) / 2;

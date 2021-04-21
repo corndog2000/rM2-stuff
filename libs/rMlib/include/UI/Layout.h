@@ -8,14 +8,17 @@ template<typename Child>
 class Center;
 
 template<typename Child>
-class CenterRenderObject : public SingleChildRenderObject {
+class CenterRenderObject : public SingleChildRenderObject<Center<Child>> {
 public:
-  CenterRenderObject(const Center<Child>& widget)
-    : SingleChildRenderObject(widget.child.createRenderObject())
-    , widget(&widget) {}
+  using SingleChildRenderObject<Center<Child>>::SingleChildRenderObject;
+
+  // CenterRenderObject(const Center<Child>& widget)
+  //   :
+  //   SingleChildRenderObject<Center<Child>>(widget.child.createRenderObject())
+  //   , widget(&widget) {}
 
   Size doLayout(const Constraints& constraints) override {
-    childSize = child->layout(Constraints{ { 0, 0 }, constraints.max });
+    childSize = this->child->layout(Constraints{ { 0, 0 }, constraints.max });
 
     auto result = constraints.max;
     if (!constraints.hasBoundedWidth()) {
@@ -29,8 +32,8 @@ public:
   }
 
   void update(const Center<Child>& newWidget) {
-    widget = &newWidget;
-    widget->child.update(*child);
+    this->widget = &newWidget;
+    this->widget->child.update(*this->child);
   }
 
 protected:
@@ -40,12 +43,10 @@ protected:
 
     const auto topLeft = rect.topLeft + rmlib::Point{ xOffset, yOffset };
     const auto bottomRight = topLeft + childSize.toPoint();
-    return child->draw(rmlib::Rect{ topLeft, bottomRight }, canvas);
+    return this->child->draw(rmlib::Rect{ topLeft, bottomRight }, canvas);
   }
 
 private:
-  const Center<Child>* widget;
-
   Size childSize;
 };
 
@@ -59,8 +60,6 @@ public:
     return std::make_unique<CenterRenderObject<Child>>(*this);
   }
 
-private:
-  friend class CenterRenderObject<Child>;
   Child child;
 };
 
@@ -68,37 +67,35 @@ template<class Child>
 class Padding;
 
 template<typename Child>
-class PaddingRenderObject : public SingleChildRenderObject {
+class PaddingRenderObject : public SingleChildRenderObject<Padding<Child>> {
 public:
-  PaddingRenderObject(const Padding<Child>& widget)
-    : SingleChildRenderObject(widget.child.createRenderObject())
-    , widget(&widget) {}
+  using SingleChildRenderObject<Padding<Child>>::SingleChildRenderObject;
+  // PaddingRenderObject(const Padding<Child>& widget)
+  //   : SingleChildRenderObject(widget.child.createRenderObject())
+  //   , widget(&widget) {}
 
   void update(const Padding<Child>& newWidget) {
     if (/*newWidget.insets != widget->insets*/ false) {
-      markNeedsLayout();
-      markNeedsDraw();
+      this->markNeedsLayout();
+      this->markNeedsDraw();
     }
-    widget = &newWidget;
-    widget->child.update(*child);
+    this->widget = &newWidget;
+    this->widget->child.update(*this->child);
   }
 
 protected:
   Size doLayout(const Constraints& constraints) override {
-    const auto childConstraints = constraints.inset(widget->insets);
-    const auto childSize = child->layout(childConstraints);
-    return constraints.expand(childSize, widget->insets);
+    const auto childConstraints = constraints.inset(this->widget->insets);
+    const auto childSize = this->child->layout(childConstraints);
+    return constraints.expand(childSize, this->widget->insets);
   }
 
   UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
-    const auto childRect = widget->insets.shrink(rect);
-    auto childRegion = child->draw(childRect, canvas);
+    const auto childRect = this->widget->insets.shrink(rect);
+    auto childRegion = this->child->draw(childRect, canvas);
 
     return childRegion;
   }
-
-private:
-  const Padding<Child>* widget;
 };
 
 template<class Child>
@@ -112,8 +109,6 @@ public:
     return std::make_unique<PaddingRenderObject<Child>>(*this);
   }
 
-private:
-  friend class PaddingRenderObject<Child>;
   Child child;
   Insets insets;
 };
@@ -122,39 +117,40 @@ template<typename Child>
 class Border;
 
 template<typename Child>
-class BorderRenderObject : public SingleChildRenderObject {
+class BorderRenderObject : public SingleChildRenderObject<Border<Child>> {
 public:
-  BorderRenderObject(const Border<Child>& widget)
-    : SingleChildRenderObject(widget.child.createRenderObject())
-    , widget(&widget) {}
+  using SingleChildRenderObject<Border<Child>>::SingleChildRenderObject;
+  // BorderRenderObject(const Border<Child>& widget)
+  //   : SingleChildRenderObject(widget.child.createRenderObject())
+  //   , widget(&widget) {}
 
   void update(const Border<Child>& newWidget) {
-    if (widget->size != newWidget.size) {
-      markNeedsLayout();
-      markNeedsDraw();
+    if (this->widget->size != newWidget.size) {
+      this->markNeedsLayout();
+      this->markNeedsDraw();
     }
 
-    widget = &newWidget;
-    widget->child.update(*child);
+    this->widget = &newWidget;
+    this->widget->child.update(*this->child);
   }
 
 protected:
   Size doLayout(const Constraints& constraints) override {
-    const auto childConstraints = constraints.inset(widget->size);
-    const auto childSize = child->layout(childConstraints);
-    const auto newSize = constraints.expand(childSize, widget->size);
+    const auto childConstraints = constraints.inset(this->widget->size);
+    const auto childSize = this->child->layout(childConstraints);
+    const auto newSize = constraints.expand(childSize, this->widget->size);
 
-    if (newSize != getSize()) {
-      markNeedsDraw();
+    if (newSize != this->getSize()) {
+      this->markNeedsDraw();
     }
 
     return newSize;
   }
 
   UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
-    auto result = child->draw(widget->size.shrink(rect), canvas);
+    auto result = this->child->draw(this->widget->size.shrink(rect), canvas);
 
-    if (isFullDraw()) {
+    if (this->isFullDraw()) {
       const auto drawLine = [&canvas](Point a, Point b, Point dir, int size) {
         for (int i = 0; i < size; i++) {
           canvas.drawLine(a, b, black);
@@ -166,28 +162,25 @@ protected:
       drawLine(rect.topLeft,
                { rect.bottomRight.x, rect.topLeft.y },
                { 0, 1 },
-               widget->size.top);
+               this->widget->size.top);
       drawLine(rect.topLeft,
                { rect.topLeft.x, rect.bottomRight.y },
                { 1, 0 },
-               widget->size.left);
+               this->widget->size.left);
       drawLine({ rect.bottomRight.x, rect.topLeft.y },
                rect.bottomRight,
                { -1, 0 },
-               widget->size.right);
+               this->widget->size.right);
       drawLine({ rect.topLeft.x, rect.bottomRight.y },
                rect.bottomRight,
                { 0, -1 },
-               widget->size.bottom);
+               this->widget->size.bottom);
 
       result |= UpdateRegion{ rect, rmlib::fb::Waveform::DU };
     }
 
     return result;
   }
-
-private:
-  const Border<Child>* widget;
 };
 
 template<typename Child>
@@ -200,8 +193,6 @@ public:
     return std::make_unique<BorderRenderObject<Child>>(*this);
   }
 
-private:
-  friend class BorderRenderObject<Child>;
   Child child;
   Insets size;
 };
@@ -210,26 +201,27 @@ template<class Child>
 class Sized;
 
 template<typename Child>
-class SizedRenderObject : public SingleChildRenderObject {
+class SizedRenderObject : public SingleChildRenderObject<Sized<Child>> {
 public:
-  SizedRenderObject(const Sized<Child>& widget)
-    : SingleChildRenderObject(widget.child.createRenderObject())
-    , widget(&widget) {}
+  using SingleChildRenderObject<Sized<Child>>::SingleChildRenderObject;
+  // SizedRenderObject(const Sized<Child>& widget)
+  //   : SingleChildRenderObject(widget.child.createRenderObject())
+  //   , widget(&widget) {}
 
   void update(const Sized<Child>& newWidget) {
-    if (newWidget.width != widget->width ||
-        newWidget.height != widget->height) {
-      markNeedsLayout();
-      markNeedsDraw();
+    if (newWidget.width != this->widget->width ||
+        newWidget.height != this->widget->height) {
+      this->markNeedsLayout();
+      this->markNeedsDraw();
     }
-    widget = &newWidget;
-    widget->child.update(*child);
+    this->widget = &newWidget;
+    this->widget->child.update(*this->child);
   }
 
 protected:
   Size doLayout(const Constraints& constraints) override {
-    const auto& w = widget->width;
-    const auto& h = widget->height;
+    const auto& w = this->widget->width;
+    const auto& h = this->widget->height;
 
     const auto childConstraints = Constraints{
       { w.has_value()
@@ -246,16 +238,13 @@ protected:
           : constraints.max.height }
     };
 
-    const auto childSize = child->layout(childConstraints);
+    const auto childSize = this->child->layout(childConstraints);
     return childSize;
   }
 
   UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
-    return child->draw(rect, canvas);
+    return this->child->draw(rect, canvas);
   }
-
-private:
-  const Sized<Child>* widget;
 };
 
 template<class Child>
@@ -269,8 +258,6 @@ public:
     return std::make_unique<SizedRenderObject<Child>>(*this);
   }
 
-private:
-  friend class SizedRenderObject<Child>;
   Child child;
   std::optional<int> width;
   std::optional<int> height;
@@ -290,45 +277,41 @@ public:
     return std::make_unique<ClearedRenderObject<Child>>(*this);
   }
 
-private:
-  friend class ClearedRenderObject<Child>;
   Child child;
   int color;
 };
 
 template<typename Child>
-class ClearedRenderObject : public SingleChildRenderObject {
+class ClearedRenderObject : public SingleChildRenderObject<Cleared<Child>> {
 public:
-  ClearedRenderObject(const Cleared<Child>& widget)
-    : SingleChildRenderObject(widget.child.createRenderObject())
-    , widget(&widget) {}
+  using SingleChildRenderObject<Cleared<Child>>::SingleChildRenderObject;
+  // ClearedRenderObject(const Cleared<Child>& widget)
+  //   : SingleChildRenderObject(widget.child.createRenderObject())
+  //   , widget(&widget) {}
 
   void update(const Cleared<Child>& newWidget) {
-    if (newWidget.color != widget->color) {
-      markNeedsDraw();
+    if (newWidget.color != this->widget->color) {
+      this->markNeedsDraw();
     }
-    widget = &newWidget;
-    widget->child.update(*child);
+    this->widget = &newWidget;
+    this->widget->child.update(*this->child);
   }
 
 protected:
   Size doLayout(const Constraints& constraints) override {
-    return child->layout(constraints);
+    return this->child->layout(constraints);
   }
 
   UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
     auto region = UpdateRegion{};
 
-    if (isFullDraw()) {
-      canvas.set(rect, widget->color);
+    if (this->isFullDraw()) {
+      canvas.set(rect, this->widget->color);
       region = UpdateRegion{ rect };
     }
 
-    return region | child->draw(rect, canvas);
+    return region | this->child->draw(rect, canvas);
   }
-
-private:
-  const Cleared<Child>* widget;
 };
 
 template<typename Child>
@@ -345,38 +328,39 @@ public:
     return std::make_unique<PositionedRenderObject<Child>>(*this);
   }
 
-private:
-  friend class PositionedRenderObject<Child>;
   Child child;
   Point position;
 };
 
 template<typename Child>
-class PositionedRenderObject : public SingleChildRenderObject {
+class PositionedRenderObject
+  : public SingleChildRenderObject<Positioned<Child>> {
 public:
-  PositionedRenderObject(const Positioned<Child>& widget)
-    : SingleChildRenderObject(widget.child.createRenderObject())
-    , widget(&widget) {}
+  using SingleChildRenderObject<Positioned<Child>>::SingleChildRenderObject;
+  // PositionedRenderObject(const Positioned<Child>& widget)
+  //   : SingleChildRenderObject(widget.child.createRenderObject())
+  //   , widget(&widget) {}
 
   void update(const Positioned<Child>& newWidget) {
-    if (newWidget.position != widget->position) {
-      markNeedsLayout();
+    if (newWidget.position != this->widget->position) {
+      this->markNeedsLayout();
 
+      // Hack to no clear whole rect only child rect
       RenderObject::markNeedsDraw(/* full */ false);
-      child->markNeedsDraw(true);
+      this->child->markNeedsDraw(true);
     }
-    widget = &newWidget;
-    widget->child.update(*child);
+    this->widget = &newWidget;
+    this->widget->child.update(*this->child);
   }
 
 protected:
   Size doLayout(const Constraints& constraints) override {
     const auto newConstraints =
       Constraints{ { 0, 0 },
-                   { constraints.max.width - widget->position.x,
-                     constraints.max.height - widget->position.y } };
+                   { constraints.max.width - this->widget->position.x,
+                     constraints.max.height - this->widget->position.y } };
 
-    childSize = child->layout(newConstraints);
+    childSize = this->child->layout(newConstraints);
 
     auto result = constraints.max;
     if (!constraints.hasBoundedWidth()) {
@@ -390,13 +374,12 @@ protected:
   }
 
   UpdateRegion doDraw(rmlib::Rect rect, rmlib::Canvas& canvas) override {
-    const auto topLeft = rect.topLeft + widget->position;
+    const auto topLeft = rect.topLeft + this->widget->position;
     const auto bottomRight = topLeft + childSize.toPoint();
-    return child->draw({ topLeft, bottomRight }, canvas);
+    return this->child->draw({ topLeft, bottomRight }, canvas);
   }
 
 private:
-  const Positioned<Child>* widget;
   Size childSize;
 };
 

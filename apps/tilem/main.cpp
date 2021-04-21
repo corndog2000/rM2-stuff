@@ -1,6 +1,8 @@
 #include <FrameBuffer.h>
 #include <Input.h>
+
 #include <UI.h>
+#include <UI/Navigator.h>
 
 #include "scancodes.h"
 #include "tilem.h"
@@ -126,9 +128,9 @@ private:
   size_t numRows;
 };
 
-class KeypadRenderObject : public RenderObject {
+class KeypadRenderObject : public LeafRenderObject<Keypad> {
 public:
-  KeypadRenderObject(const Keypad& widget) : widget(&widget) {}
+  using LeafRenderObject<Keypad>::LeafRenderObject;
 
   void update(const Keypad& newWidget) { widget = &newWidget; }
 
@@ -232,6 +234,10 @@ protected:
   }
 
   void handleInput(const Event& ev) final {
+    if (widget->calc == nullptr) {
+      return;
+    }
+
     std::visit(
       [this](const auto& ev) {
         if constexpr (is_pointer_event<decltype(ev)>) {
@@ -268,7 +274,6 @@ private:
   constexpr static auto key_aspect = 1.5;
   constexpr static auto front_label_factor = 0.6;
 
-  const Keypad* widget = nullptr;
   std::vector<std::pair<Rect, const Key*>> keyLocations;
   std::unordered_map<int, const Key*> keyPointers;
   int keyWidth;
@@ -294,15 +299,17 @@ private:
   TilemCalc* calc = nullptr;
 };
 
-class ScreenRenderObject : public RenderObject {
+class ScreenRenderObject : public LeafRenderObject<Screen> {
 public:
   ScreenRenderObject(const Screen& widget)
-    : widget(&widget)
+    : LeafRenderObject<Screen>(widget)
     , lcd(tilem_lcd_buffer_new())
     , oldLcd(tilem_lcd_buffer_new()) {
 
     assert(lcd != nullptr && oldLcd != nullptr);
-    addTimer();
+    if (widget.calc != nullptr) {
+      addTimer(widget.calc);
+    }
   }
 
   static void stateFrameCallback(TilemCalc* calc, void* selfPtr) {
@@ -310,8 +317,8 @@ public:
     self->markNeedsDraw(/* full */ false);
   }
 
-  void addTimer() {
-    tilem_z80_add_timer(widget->calc,
+  void addTimer(TilemCalc* calc) {
+    tilem_z80_add_timer(calc,
                         std::chrono::microseconds(frame_time).count(),
                         std::chrono::microseconds(frame_time).count(),
                         /* real time */ 1,
@@ -320,8 +327,8 @@ public:
   }
 
   void update(const Screen& newWidget) {
-    if (newWidget.calc != widget->calc) {
-      addTimer();
+    if (newWidget.calc != widget->calc && newWidget.calc != nullptr) {
+      addTimer(newWidget.calc);
     }
     widget = &newWidget;
   }
@@ -332,6 +339,10 @@ protected:
   }
 
   UpdateRegion doDraw(Rect rect, Canvas& canvas) final {
+    if (widget->calc == nullptr) {
+      return {};
+    }
+
     tilem_lcd_get_frame(widget->calc, lcd);
     if (isPartialDraw() && oldLcd->contrast == lcd->contrast &&
         (lcd->contrast == 0 ||
@@ -344,17 +355,31 @@ protected:
     if (lcd->contrast == 0) {
       canvas.set(rect, black);
     } else {
-      float scale_x = (float)rect.width() / lcd->width;
-      float scale_y = (float)rect.height() / lcd->height;
-      canvas.transform(
-        [&](int x, int y, int) {
-          int subY = (y - rect.topLeft.y) / scale_y;
-          int subX = (x - rect.topLeft.x) / scale_x;
-          uint8_t data = lcd->data[subY * lcd->rowstride + subX];
-          uint8_t pixel = data ? 0 : 0xff;
-          return (pixel >> 4) << 1;
-        },
-        rect);
+      float inc_x = float(lcd->width) / rect.width();
+      float inc_y = float(lcd->height) / rect.height();
+
+      const auto canvasStride = canvas.lineSize() / sizeof(uint16_t);
+      auto* canvasLinePtr =
+        canvas.getPtr<uint16_t>(rect.topLeft.x, rect.topLeft.y);
+
+      float subY = 0;
+      for (int y = rect.topLeft.y; y <= rect.bottomRight.y; y++) {
+        const uint8_t* lcdRow = &lcd->data[int(subY) * lcd->rowstride];
+        auto* canvasPtr = canvasLinePtr;
+
+        float subX = 0;
+        for (int x = rect.topLeft.x; x <= rect.bottomRight.x; x++) {
+          const uint8_t data = lcdRow[int(subX)];
+          const uint8_t pixel = data ? 0 : 0xff;
+
+          *canvasPtr = pixel;
+
+          subX += inc_x;
+          canvasPtr += 1;
+        }
+        subY += inc_y;
+        canvasLinePtr += canvasStride;
+      }
     }
     std::swap(lcd, oldLcd);
 
@@ -362,7 +387,6 @@ protected:
   }
 
 private:
-  const Screen* widget;
   TilemLCDBuffer* lcd = nullptr;
   TilemLCDBuffer* oldLcd = nullptr;
 };
@@ -372,6 +396,75 @@ Screen::createRenderObject() const {
   return std::make_unique<ScreenRenderObject>(*this);
 }
 
+class DownloadDialog : public StatefulWidget<DownloadDialog> {
+public:
+  class State : public StateBase<DownloadDialog> {
+  public:
+    void init(AppContext& ctx) {
+      startTimer = ctx.addTimer(std::chrono::seconds(0), [this] {
+        constexpr auto url =
+          "https://tiroms.weebly.com/uploads/1/1/0/5/110560031/ti84plus.rom";
+        auto cmd = "wget -O '" + getWidget().romPath + "' " + url;
+
+        std::cout << cmd << "\n";
+        system(cmd.c_str());
+
+        setState([](auto& self) { self.downloaded = true; });
+      });
+    }
+
+    auto build(AppContext& appCtx, const BuildContext& ctx) const {
+      if (downloaded) {
+        Navigator::of(ctx).pop();
+        getWidget().done();
+      }
+
+      return Center(Border(
+        Cleared(Text("Downloading ROM '" + getWidget().romPath + "' ...")),
+        Insets::all(5)));
+    }
+
+  private:
+    TimerHandle startTimer;
+    bool downloaded = false;
+  };
+
+  DownloadDialog(std::string_view romPath, Callback done)
+    : romPath(romPath), done(std::move(done)) {}
+
+  State createState() const { return State{}; }
+
+  std::string romPath;
+  Callback done;
+};
+
+class ErrorDialog : public StatelessWidget<ErrorDialog> {
+public:
+  ErrorDialog(std::string_view romPath, Callback done)
+    : romPath(romPath), done(std::move(done)) {}
+
+  auto build(AppContext& appCtx, const BuildContext& ctx) const {
+    return Center((Border(
+      Cleared(Column(Text("Loading ROM '" + romPath + "' failed"),
+                     Row(Padding(Button("Download",
+                                        [this, &ctx] {
+                                          Navigator::of(ctx).pop();
+                                          Navigator::of(ctx).push(
+                                            OverlayEntry{ [this] {
+                                              return DownloadDialog(romPath,
+                                                                    done);
+                                            } });
+                                        }),
+                                 Insets::all(10)),
+                         Padding(Button("Exit", [&appCtx] { appCtx.stop(); }),
+                                 Insets::all(10))))),
+      Insets::all(5))));
+  }
+
+  std::string romPath;
+  Callback done;
+};
+
 class Calculator;
 class CalcState;
 
@@ -379,6 +472,8 @@ class Calculator : public StatefulWidget<Calculator> {
 public:
   Calculator(std::string romPath)
     : romPath(romPath), savePath(romPath + calc_save_extension) {}
+
+  ~Calculator() { std::cout << "Destroying calc\n"; }
 
   CalcState createState() const;
 
@@ -391,50 +486,12 @@ private:
 
 class CalcState : public StateBase<Calculator> {
 public:
-  void updateCalcState() {
-    const auto time = std::chrono::steady_clock::now();
-    auto diff = time - lastUpdateTime;
-
-    // Skip frames if we were paused.
-    if (diff > std::chrono::seconds(1)) {
-      std::cout << "Skipping frames...\n";
-      diff = TPS;
-    }
-
-    tilem_z80_run_time(
-      mCalc,
-      std::chrono::duration_cast<std::chrono::microseconds>(diff).count(),
-      nullptr);
-
-    lastUpdateTime = time;
-  }
-
   void init(AppContext& context) {
-    mCalc = tilem_calc_new(TILEM_CALC_TI84P);
+    showingDialog = false;
+    mCalc = loadCalc();
+
     if (mCalc == nullptr) {
-      std::cerr << "Error init mCalc\n";
-      std::exit(EXIT_FAILURE);
-    }
-
-    FILE* rom = fopen(getWidget().romPath.c_str(), "r");
-    if (rom == nullptr) {
-      perror("Error opening rom file");
-      std::exit(EXIT_FAILURE);
-    }
-
-    FILE* save = fopen(getWidget().savePath.c_str(), "r");
-    if (save == nullptr) {
-      perror("No save");
-    }
-
-    if (tilem_calc_load_state(mCalc, rom, save) != 0) {
-      perror("Error loading rom or save");
-      std::exit(EXIT_FAILURE);
-    }
-
-    fclose(rom);
-    if (save != nullptr) {
-      fclose(save);
+      return;
     }
 
     std::cout << "loaded rom, entering mainloop\n";
@@ -460,8 +517,18 @@ public:
       Insets::all(1)));
   }
 
-  auto build(AppContext& context) const {
-    constexpr auto scale = 6;
+  auto build(AppContext& context, const BuildContext& buildCtx) const {
+    if (mCalc == nullptr && !showingDialog) {
+      Navigator::of(buildCtx).push(
+        OverlayEntry{ [this, &context, &romPath = getWidget().romPath] {
+          return ErrorDialog(romPath, [this, &context] {
+            setState([&context](auto& self) { self.init(context); });
+          });
+        } });
+      setState([](auto& self) { self.showingDialog = true; });
+    }
+
+    constexpr auto scale = 6.5;
     constexpr auto width = scale * 96;
     constexpr auto height = scale * 64;
     return Center(Border(Column(header(context, width),
@@ -471,7 +538,11 @@ public:
   }
 
   ~CalcState() {
-    std::cout << "Saving state\n";
+    if (mCalc == nullptr) {
+      return;
+    }
+
+    std::cout << "Saving state to: " + getWidget().savePath + "\n";
     auto* save = fopen(getWidget().savePath.c_str(), "w");
     if (save == nullptr) {
       perror("Error opening save file");
@@ -482,7 +553,62 @@ public:
   }
 
 private:
+  TilemCalc* loadCalc() const {
+    FILE* rom = fopen(getWidget().romPath.c_str(), "r");
+    if (rom == nullptr) {
+      perror("Error opening rom file");
+      return nullptr;
+    }
+
+    FILE* save = fopen(getWidget().savePath.c_str(), "r");
+    if (save == nullptr) {
+      perror("No save");
+    }
+
+    auto* result = tilem_calc_new(TILEM_CALC_TI84P);
+    if (result == nullptr) {
+      std::cerr << "Error init Calc\n";
+      return nullptr;
+    }
+
+    if (tilem_calc_load_state(result, rom, save) != 0) {
+      perror("Error loading rom or save");
+
+      fclose(rom);
+      if (save != nullptr) {
+        fclose(save);
+      }
+      return nullptr;
+    }
+
+    fclose(rom);
+    if (save != nullptr) {
+      fclose(save);
+    }
+
+    return result;
+  }
+
+  void updateCalcState() {
+    const auto time = std::chrono::steady_clock::now();
+    auto diff = time - lastUpdateTime;
+
+    // Skip frames if we were paused.
+    if (diff > std::chrono::seconds(1)) {
+      std::cout << "Skipping frames...\n";
+      diff = TPS;
+    }
+
+    tilem_z80_run_time(
+      mCalc,
+      std::chrono::duration_cast<std::chrono::microseconds>(diff).count(),
+      nullptr);
+
+    lastUpdateTime = time;
+  }
+
   TilemCalc* mCalc = nullptr;
+  bool showingDialog = false;
 
   TimerHandle updateTimer;
 
@@ -500,7 +626,7 @@ int
 main(int argc, char* argv[]) {
   const auto* calc_name = argc > 1 ? argv[1] : calc_default_rom;
 
-  const auto err = runApp(Calculator(calc_name));
+  const auto err = runApp(Navigator(Calculator(calc_name)));
 
   if (err.isError()) {
     std::cerr << err.getError().msg << std::endl;
