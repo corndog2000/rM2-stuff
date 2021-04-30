@@ -14,17 +14,20 @@ class StatefulRenderObject;
 template<typename Derived>
 class StatefulWidget;
 
-namespace details {
 template<typename DerivedSW>
-struct SWTraits {
-  static_assert(std::is_base_of_v<StatefulWidget<DerivedSW>, DerivedSW>,
-                "The widget must derive StatefulWidget");
+class StateBase;
 
-  using StateType =
-    std::result_of_t<decltype (&DerivedSW::createState)(const DerivedSW)>;
-  using WidgetType = std::result_of_t<decltype (
-    &StateType::build)(const StateType, AppContext&, const BuildContext&)>;
-};
+namespace details {
+
+template<typename DerivedSW>
+using StateType =
+  std::result_of_t<decltype (&DerivedSW::createState)(const DerivedSW)>;
+
+template<typename DerivedSW>
+using WidgetType = std::result_of_t<decltype (&StateType<DerivedSW>::build)(
+  const StateType<DerivedSW>,
+  AppContext&,
+  const BuildContext&)>;
 
 } // namespace details
 
@@ -35,15 +38,25 @@ public:
     mRenderObject = &renderObject;
   }
 
-  void init(AppContext& ctx) {}
+  void init(AppContext&, const BuildContext&) {
+    static_assert(std::is_base_of_v<StateBase<DerivedSW>,
+                                    typename details::StateType<DerivedSW>>,
+                  "State must derive StateBase");
+  }
 
 protected:
+  auto& modify() const {
+    using StateT = typename details::StateType<DerivedSW>;
+
+    mRenderObject->markNeedsRebuild();
+    return *const_cast<StateT*>(static_cast<const StateT*>(this));
+  }
+
   template<typename Fn>
   void setState(Fn fn) const {
-    using StateT = typename details::SWTraits<DerivedSW>::StateType;
-    fn(*const_cast<StateT*>(static_cast<const StateT*>(this)));
+    using StateT = typename details::StateType<DerivedSW>;
 
-    // mark dirty
+    fn(*const_cast<StateT*>(static_cast<const StateT*>(this)));
     mRenderObject->markNeedsRebuild();
   }
 
@@ -56,9 +69,8 @@ private:
 template<typename Derived>
 class StatefulRenderObject : public SingleChildRenderObject<Derived> {
 private:
-  using SWTraits = details::SWTraits<Derived>;
-  using StateT = typename SWTraits::StateType;
-  using WidgetT = typename SWTraits::WidgetType;
+  using StateT = typename details::StateType<Derived>;
+  using WidgetT = typename details::WidgetType<Derived>;
 
 public:
   StatefulRenderObject(const Derived& widget)
@@ -85,7 +97,7 @@ public:
 protected:
   void doRebuild(AppContext& context, const BuildContext& buildCtx) override {
     if (!hasInitedState) {
-      state.init(context);
+      state.init(context, buildCtx);
       hasInitedState = true;
     }
 
@@ -117,6 +129,8 @@ template<typename Derived>
 class StatefulWidget : public Widget<StatefulRenderObject<Derived>> {
 public:
   std::unique_ptr<RenderObject> createRenderObject() const {
+    static_assert(std::is_base_of_v<StatefulWidget<Derived>, Derived>,
+                  "The widget must derive StatefulWidget");
     return std::make_unique<StatefulRenderObject<Derived>>(
       *static_cast<const Derived*>(this));
   }

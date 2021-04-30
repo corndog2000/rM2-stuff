@@ -52,7 +52,7 @@ class TimerTest : public StatefulWidget<TimerTest> {
 public:
   class State : public StateBase<TimerTest> {
   public:
-    void init(AppContext& context) {
+    void init(AppContext& context, const BuildContext&) {
       timer = context.addTimer(
         std::chrono::seconds(1), [this] { tick(); }, std::chrono::seconds(1));
     }
@@ -168,22 +168,36 @@ public:
 
 class DialogTest : public StatelessWidget<DialogTest> {
 public:
+  DialogTest(std::string msg) : msg(std::move(msg)) {}
+
   auto build(AppContext&, const BuildContext& ctx) const {
     return Center((Border(
       Cleared(Column(
-        Text("Downloading ROM failed"),
-        Row(Padding(Button("OK", [] {}), Insets::all(10)),
-            Padding(Button("close", [&ctx] { Navigator::of(ctx).pop(); }),
+        Text(msg),
+        Row(Padding(Button("OK", [&ctx] { Navigator::of(ctx).pop(true); }),
+                    Insets::all(10)),
+            Padding(Button("Cancel", [&ctx] { Navigator::of(ctx).pop(false); }),
                     Insets::all(10))))),
       Insets::all(5))));
   }
+
+  std::string msg;
 };
 
 class NavTest : public StatelessWidget<NavTest> {
 public:
   auto build(AppContext&, const BuildContext& buildCtx) const {
     return Center(Button("show dialog", [&buildCtx] {
-      Navigator::of(buildCtx).push(OverlayEntry{ [] { return DialogTest(); } });
+      Navigator::of(buildCtx)
+        .push<bool>([] { return DialogTest("First dialog"); })
+        .then([&buildCtx](bool val) {
+          std::cout << "Closed First\n";
+          return Navigator::of(buildCtx).push<bool>([val] {
+            return DialogTest("Second dialog: " +
+                              std::string(val ? "OK" : "Cancel"));
+          });
+        })
+        .then([](bool val) { std::cout << "Closed second\n"; });
     }));
   }
 };

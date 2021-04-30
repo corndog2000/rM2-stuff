@@ -400,24 +400,20 @@ class DownloadDialog : public StatefulWidget<DownloadDialog> {
 public:
   class State : public StateBase<DownloadDialog> {
   public:
-    void init(AppContext& ctx) {
-      startTimer = ctx.addTimer(std::chrono::seconds(0), [this] {
+    void init(AppContext& ctx, const BuildContext& buildCtx) {
+      startTimer = ctx.addTimer(std::chrono::seconds(0), [&] {
         constexpr auto url =
-          "https://tiroms.weebly.com/uploads/1/1/0/5/110560031/ti84plus.rom";
+          "http://tiroms.weebly.com/uploads/1/1/0/5/110560031/ti84plus.rom";
         auto cmd = "wget -O '" + getWidget().romPath + "' " + url;
 
         std::cout << cmd << "\n";
         system(cmd.c_str());
 
-        setState([](auto& self) { self.downloaded = true; });
+        Navigator::of(buildCtx).pop();
       });
     }
 
     auto build(AppContext& appCtx, const BuildContext& ctx) const {
-      if (downloaded) {
-        Navigator::of(ctx).pop();
-        getWidget().done();
-      }
 
       return Center(Border(
         Cleared(Text("Downloading ROM '" + getWidget().romPath + "' ...")),
@@ -426,43 +422,31 @@ public:
 
   private:
     TimerHandle startTimer;
-    bool downloaded = false;
   };
 
-  DownloadDialog(std::string_view romPath, Callback done)
-    : romPath(romPath), done(std::move(done)) {}
+  DownloadDialog(std::string_view romPath) : romPath(romPath) {}
 
   State createState() const { return State{}; }
 
   std::string romPath;
-  Callback done;
 };
 
 class ErrorDialog : public StatelessWidget<ErrorDialog> {
 public:
-  ErrorDialog(std::string_view romPath, Callback done)
-    : romPath(romPath), done(std::move(done)) {}
+  ErrorDialog(std::string_view romPath) : romPath(romPath) {}
 
   auto build(AppContext& appCtx, const BuildContext& ctx) const {
     return Center((Border(
-      Cleared(Column(Text("Loading ROM '" + romPath + "' failed"),
-                     Row(Padding(Button("Download",
-                                        [this, &ctx] {
-                                          Navigator::of(ctx).pop();
-                                          Navigator::of(ctx).push(
-                                            OverlayEntry{ [this] {
-                                              return DownloadDialog(romPath,
-                                                                    done);
-                                            } });
-                                        }),
-                                 Insets::all(10)),
-                         Padding(Button("Exit", [&appCtx] { appCtx.stop(); }),
-                                 Insets::all(10))))),
+      Cleared(Column(
+        Text("Loading ROM '" + romPath + "' failed"),
+        Row(Padding(Button("Download", [&ctx] { Navigator::of(ctx).pop(); }),
+                    Insets::all(10)),
+            Padding(Button("Exit", [&appCtx] { appCtx.stop(); }),
+                    Insets::all(10))))),
       Insets::all(5))));
   }
 
   std::string romPath;
-  Callback done;
 };
 
 class Calculator;
@@ -472,8 +456,6 @@ class Calculator : public StatefulWidget<Calculator> {
 public:
   Calculator(std::string romPath)
     : romPath(romPath), savePath(romPath + calc_save_extension) {}
-
-  ~Calculator() { std::cout << "Destroying calc\n"; }
 
   CalcState createState() const;
 
@@ -486,11 +468,24 @@ private:
 
 class CalcState : public StateBase<Calculator> {
 public:
-  void init(AppContext& context) {
-    showingDialog = false;
+  void init(AppContext& context, const BuildContext& buildCtx) {
     mCalc = loadCalc();
 
     if (mCalc == nullptr) {
+      popupTimer = context.addTimer(std::chrono::seconds(0), [&] {
+        Navigator::of(buildCtx)
+          .push(
+            [&romPath = getWidget().romPath] { return ErrorDialog(romPath); })
+          .then([&buildCtx, &romPath = getWidget().romPath] {
+            return Navigator::of(buildCtx).push(
+              [&romPath] { return DownloadDialog(romPath); });
+          })
+          .then([this, &context, &buildCtx] {
+            setState([&context, &buildCtx](auto& self) {
+              self.init(context, buildCtx);
+            });
+          });
+      });
       return;
     }
 
@@ -518,15 +513,6 @@ public:
   }
 
   auto build(AppContext& context, const BuildContext& buildCtx) const {
-    if (mCalc == nullptr && !showingDialog) {
-      Navigator::of(buildCtx).push(
-        OverlayEntry{ [this, &context, &romPath = getWidget().romPath] {
-          return ErrorDialog(romPath, [this, &context] {
-            setState([&context](auto& self) { self.init(context); });
-          });
-        } });
-      setState([](auto& self) { self.showingDialog = true; });
-    }
 
     constexpr auto scale = 6.5;
     constexpr auto width = scale * 96;
@@ -608,9 +594,9 @@ private:
   }
 
   TilemCalc* mCalc = nullptr;
-  bool showingDialog = false;
 
   TimerHandle updateTimer;
+  TimerHandle popupTimer;
 
   std::chrono::steady_clock::time_point lastUpdateTime;
 };

@@ -204,7 +204,7 @@ public:
     stopCallback = nullptr; // TODO: stop all apps
   }
 
-  void init(AppContext& context) {
+  void init(AppContext& context, const BuildContext&) {
     context.getInputManager().getBaseDevices()->key.grab();
 
     fbCanvas = &context.getFbCanvas();

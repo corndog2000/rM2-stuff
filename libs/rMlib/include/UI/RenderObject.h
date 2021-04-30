@@ -82,8 +82,15 @@ public:
     buildContext.emplace(*this, parent);
 
     if (mNeedsRebuild) {
+#ifndef NDEBUG
+      mInRebuild = true;
+#endif
       doRebuild(context, *buildContext);
       mNeedsRebuild = false;
+
+#ifndef NDEBUG
+      mInRebuild = false;
+#endif
     }
   }
 
@@ -103,7 +110,11 @@ public:
   virtual void markNeedsDraw(bool full = true) {
     mNeedsDraw = full ? Full : (mNeedsDraw == No ? Partial : mNeedsDraw);
   }
-  void markNeedsRebuild() { mNeedsRebuild = true; }
+
+  void markNeedsRebuild() {
+    assert(!mInRebuild && "Don't mark rebuild from within rebuild()");
+    mNeedsRebuild = true;
+  }
 
   virtual void reset() {
     needsLayoutCache.reset();
@@ -142,6 +153,11 @@ private:
   enum { No, Full, Partial } mNeedsDraw = Full;
 
   bool mNeedsRebuild = false;
+
+#ifndef NDEBUG
+protected:
+  bool mInRebuild = false;
+#endif
 };
 
 int RenderObject::roCount = 0;
@@ -204,7 +220,13 @@ public:
 
   void rebuild(AppContext& context, const BuildContext* parent) final {
     RenderObject::rebuild(context, parent);
+#ifndef NDEBUG
+    mInRebuild = true;
+#endif
     child->rebuild(context, &*buildContext);
+#ifndef NDEBUG
+    mInRebuild = false;
+#endif
   }
 
   void reset() override {
@@ -290,9 +312,17 @@ public:
 
   void rebuild(AppContext& context, const BuildContext* parent) final {
     RenderObject::rebuild(context, parent);
+
+#ifndef NDEBUG
+    mInRebuild = true;
+#endif
     for (const auto& child : children) {
       child->rebuild(context, &*buildContext);
     }
+
+#ifndef NDEBUG
+    mInRebuild = false;
+#endif
   }
 
   void reset() override {
